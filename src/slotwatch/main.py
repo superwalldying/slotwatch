@@ -175,7 +175,8 @@ def _deliver(
         else "watched sessions"
     )
     payload = build_payload(
-        to_send, mention=mention, tab_label=label, book_url=site.book_url
+        to_send, mention=mention, tab_label=label, book_url=site.book_url,
+        username=config.notify.username, avatar_url=config.notify.avatar_url,
     )
 
     for event in to_send:
@@ -248,6 +249,8 @@ def run_test_ping(
         revision=revision,
         error=error,
         mention=mention,
+        username=config.notify.username,
+        avatar_url=config.notify.avatar_url,
     )
 
     log.info(

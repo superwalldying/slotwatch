@@ -13,6 +13,7 @@ from slotwatch.format import (
     DESCRIPTION_LIMIT,
     MAX_EMBEDS,
     TOTAL_LIMIT,
+    USERNAME_LIMIT,
     build_payload,
     build_test_ping,
     payload_size,
@@ -298,3 +299,38 @@ def test_ping_mention_pings_you():
 
     assert payload["content"].startswith("<@42>")
     assert payload["allowed_mentions"] == {"parse": ["users"]}
+
+
+# --------------------------------------------------------------------------
+# Webhook display identity
+# --------------------------------------------------------------------------
+
+
+def test_username_override_is_sent_so_messages_self_identify():
+    """Otherwise Discord shows whatever name the webhook was created with."""
+    payload = build_payload([REOPENED], username="slotwatch")
+
+    assert payload["username"] == "slotwatch"
+
+
+def test_username_override_applies_to_the_deploy_check_too():
+    assert _ping(username="slotwatch")["username"] == "slotwatch"
+
+
+def test_no_username_configured_leaves_the_field_out():
+    """Absent, not empty - an empty username would be rejected by Discord."""
+    assert "username" not in build_payload([REOPENED])
+    assert "username" not in _ping()
+
+
+def test_avatar_url_is_optional_and_independent():
+    payload = build_payload([REOPENED], avatar_url="https://example.invalid/i.png")
+
+    assert payload["avatar_url"] == "https://example.invalid/i.png"
+    assert "username" not in payload
+
+
+def test_overlong_username_is_truncated_to_discords_limit():
+    payload = build_payload([REOPENED], username="x" * 200)
+
+    assert len(payload["username"]) == USERNAME_LIMIT

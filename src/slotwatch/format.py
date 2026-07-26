@@ -19,6 +19,9 @@ from .models import Availability, Event, EventType
 BOOK_URL = ""
 TAB_LABEL = "sessions"
 
+# Discord caps the webhook display-name override at 80 characters.
+USERNAME_LIMIT = 80
+
 COLOR_OPENING = 0x2ECC71  # green
 COLOR_HEALTH = 0xE67E22  # orange
 COLOR_TEST = 0x3498DB  # blue - visually distinct so a deploy check is never mistaken
@@ -34,6 +37,22 @@ MAX_EMBEDS = 10
 
 # Leave room for the truncation notice and the tab hint.
 _DESCRIPTION_BUDGET = 3500
+
+
+def _apply_identity(
+    payload: dict, username: str | None, avatar_url: str | None
+) -> dict:
+    """Override the webhook's own display name/avatar for this message.
+
+    Without this, Discord shows whatever the webhook was created as - which is often a
+    leftover name from some unrelated integration, and is confusing if the webhook is
+    shared. Setting it per-message means the alert is always self-identifying.
+    """
+    if username:
+        payload["username"] = username[:USERNAME_LIMIT]
+    if avatar_url:
+        payload["avatar_url"] = avatar_url
+    return payload
 
 
 def payload_size(payload: dict) -> int:
@@ -137,6 +156,8 @@ def build_payload(
     mention: str | None = None,
     tab_label: str = TAB_LABEL,
     book_url: str = BOOK_URL,
+    username: str | None = None,
+    avatar_url: str | None = None,
 ) -> dict | None:
     """One payload for the whole batch, or None when there is nothing to say."""
     if not events:
@@ -159,7 +180,7 @@ def build_payload(
     if mention:
         payload["allowed_mentions"] = {"parse": ["users"]}
 
-    return payload
+    return _apply_identity(payload, username, avatar_url)
 
 
 def _summary(slot_events: list[Event], health_events: list[Event]) -> str:
@@ -187,6 +208,8 @@ def build_test_ping(
     revision: str | None = None,
     error: str | None = None,
     mention: str | None = None,
+    username: str | None = None,
+    avatar_url: str | None = None,
 ) -> dict:
     """Deploy-check message: proves secrets, site profile, parsing and Discord all work.
 
@@ -242,7 +265,7 @@ def build_test_ping(
     payload["content"] = content[:CONTENT_LIMIT]
     if mention:
         payload["allowed_mentions"] = {"parse": ["users"]}
-    return payload
+    return _apply_identity(payload, username, avatar_url)
 
 
 def to_json(payload: dict) -> str:

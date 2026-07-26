@@ -74,6 +74,10 @@ class NotifyConfig:
     webhook_url_env: str = "DISCORD_WEBHOOK_URL"
     mention: str | None = None
     mention_env: str | None = None
+    # Overrides the webhook's own display name/avatar, which otherwise shows whatever
+    # the webhook happened to be created as.
+    username: str | None = None
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +151,8 @@ def load_config(path: str | Path, *, known_tabs: set[str] | None = None) -> Conf
         webhook_url_env=str(notify_raw.get("webhook_url_env", "DISCORD_WEBHOOK_URL")),
         mention=(str(notify_raw["mention"]) if notify_raw.get("mention") else None),
         mention_env=(str(notify_raw["mention_env"]) if notify_raw.get("mention_env") else None),
+        username=(str(notify_raw["username"]) if notify_raw.get("username") else None),
+        avatar_url=(str(notify_raw["avatar_url"]) if notify_raw.get("avatar_url") else None),
     )
 
     return Config(poll=poll, notify=notify, rules=rules_from_config(raw.get("rules")))

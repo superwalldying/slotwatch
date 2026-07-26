@@ -49,6 +49,11 @@ notify:
   # unread in a channel. Supplied via the environment; see README.
   mention_env: DISCORD_MENTION
 
+  # Display name shown on each message. Without this, Discord falls back to whatever
+  # the webhook itself was named - often a leftover from an unrelated integration.
+  username: slotwatch
+  # avatar_url: "https://example.com/icon.png"   # optional
+
 rules:
   # The originally requested slot. Note it has been full on every listed date, so
   # `reopened` is the trigger that will actually fire.
