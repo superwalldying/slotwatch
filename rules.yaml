@@ -1,0 +1,72 @@
+# What to get pinged about. GitHub's web/mobile editor works fine for this; the poller
+# picks up changes on its next run.
+#
+# Target details (domain, endpoint, tab ids, venue labels) do NOT belong here - they live
+# in the runtime site profile. See site.example.yaml.
+
+poll:
+  # Tab keys as defined in your site profile's `tabs:` section.
+  tabs: [primary]
+
+  # All window times below are in this zone, evaluated with real DST rules.
+  timezone: America/New_York
+
+  # Don't re-announce the same slot inside this window if it flaps full <-> open.
+  cooldown_hours: 6
+  # Scraper-health warnings are rate-limited harder so a persistent break can't spam.
+  health_cooldown_hours: 12
+
+  # Consecutive fetch failures before you're told the scraper may be down.
+  failure_threshold: 3
+  # Random 0..N seconds added to each sleep so requests aren't perfectly periodic.
+  jitter_seconds: 20
+
+  # Weekdays only. This is a deliberate trade: cancellations must be submitted by 3pm
+  # Friday to earn a refund, so nearly all of them land inside Mon-Fri. A spot freed on
+  # Saturday or Sunday morning will not be noticed until Monday - by which point a
+  # weekend session has already happened. Add `sat`/`sun` days below if you'd rather
+  # catch those too.
+  windows:
+    - days: [mon, tue, wed, thu]
+      start: "09:00"
+      end: "17:00"
+      interval_minutes: 3
+
+    - days: [fri]
+      start: "09:00"
+      end: "17:00"
+      interval_minutes: 3
+      # The refund cutoff itself: cancellations cluster right before it.
+      dense:
+        start: "12:00"
+        end: "15:00"
+        interval_minutes: 2
+
+notify:
+  # The webhook URL is read from this environment variable, never stored here.
+  webhook_url_env: DISCORD_WEBHOOK_URL
+  # Your Discord user ID, so alerts actually buzz your phone rather than sitting
+  # unread in a channel. Supplied via the environment; see README.
+  mention_env: DISCORD_MENTION
+
+rules:
+  # The originally requested slot. Note it has been full on every listed date, so
+  # `reopened` is the trigger that will actually fire.
+  #
+  # `gym` is intentionally omitted: we poll a single venue's tab, so it would be
+  # redundant - and naming venues in a committed file defeats the point.
+  - name: "Court 1, late block"
+    enabled: true
+    level: "Intermediate - Court 1"
+    time: "4:00 pm - 7:30 pm"
+    date: any
+    triggers: [new_slot, reopened]
+
+  # Companion rule: without something broader you may hear nothing for weeks, because
+  # every Intermediate slot is currently full. Covers both courts, both blocks.
+  - name: "Any Intermediate opening"
+    enabled: true
+    level: "Intermediate - Court [12]"
+    match: regex
+    date: any
+    triggers: [new_slot, reopened]

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slotwatch"
+version = "0.1.0"
+description = "Discord alerts when watched booking slots become available"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "PyYAML>=6.0",
+    # Windows ships no IANA tz database, so zoneinfo("America/New_York") fails without
+    # this. Pinned as a hard dependency to keep dev and the Linux runner identical.
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "responses>=0.25", "pytest-cov>=5.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers -m 'not live'"
+markers = ["live: hits the real target site; excluded from default runs"]

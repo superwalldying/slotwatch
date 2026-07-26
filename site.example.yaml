@@ -1,0 +1,38 @@
+# Site profile template. Copy to site.yaml (gitignored) and fill in real values, or
+# paste the completed YAML into the SITE_PROFILE Actions secret.
+#
+# Nothing identifying belongs in a committed file. site.yaml is ignored by git; CI reads
+# SITE_PROFILE instead, so the published repository never names the target.
+
+base_url: "https://www.example-booking.com/"
+
+# Appended to base_url unless you set `ajax_url` outright.
+ajax_path: "wp-admin/admin-ajax.php"
+
+# The AJAX action name the site's own front-end posts when switching tabs.
+action: "REPLACE_ME"
+
+# Page a human should open to book, and the Referer to send with requests.
+book_url: "https://www.example-booking.com/?page_id=0&filter_id=1&gametypeid=1"
+referer: "https://www.example-booking.com/?page_id=0&filter_id=1&gametypeid=1"
+
+gametypeid: 1
+
+# buttonid/filterid come from the tab-switch calls in the page's own JavaScript.
+# `label` is cosmetic - it appears in Discord alerts.
+tabs:
+  primary:
+    label: "Sunday sessions"
+    buttonid: 5
+    filterid: 18
+  # secondary:
+  #   label: "Friday sessions"
+  #   buttonid: 4
+  #   filterid: 6
+
+# Structural, rarely need changing. Defaults suit a standard WordPress booking table.
+# field_name: "f_GameID"
+# empty_marker: "no open session"
+
+# Be honest about who you are; a contactable UA is good manners.
+# user_agent: "slotwatch/0.1 (personal booking-slot watcher; +mailto:you@example.com)"

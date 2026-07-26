@@ -1,0 +1,92 @@
+name: Deploy check
+
+# Fires on every code or config change and posts a Discord summary of what the bot can
+# actually see. This is the antidote to the project's worst failure mode: a broken secret,
+# an invalid site profile or drifted markup all look identical to "nothing has opened up
+# yet" - weeks of silence you'd have no reason to question.
+#
+# Tests run first, so a green ping means the suite passed AND the real page parsed AND
+# Discord delivery works, end to end.
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      # The poller's own state commits and the weekly heartbeat. They already carry
+      # [skip ci], but this makes it explicit.
+      - "state/**"
+      - "**.md"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Tests
+        # Offline; needs no secrets. A red suite must stop the ping.
+        run: pytest -q
+
+      - name: Deploy check ping
+        env:
+          SITE_PROFILE: ${{ secrets.SITE_PROFILE }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
+        # Exits non-zero on a fetch failure or parser anomaly, so drift turns the build
+        # red as well as posting a FAILED embed.
+        run: python -m slotwatch.main --test-ping
+
+      - name: Report a failed check
+        # Covers the cases the Python path can't report itself: install broke, tests
+        # failed, or the ping step never ran. Silence must never be the only signal.
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "no webhook configured; cannot report" >&2
+            exit 0
+          fi
+          RUN_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          python - <<'PY' > payload.json
+          import json, os
+          mention = os.environ.get("DISCORD_MENTION") or ""
+          sha = (os.environ.get("GITHUB_SHA") or "")[:7]
+          url = (
+              f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}"
+              f"/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          )
+          payload = {
+              "content": f"{mention} ⚠️ slotwatch deploy check FAILED".strip(),
+              "allowed_mentions": {"parse": ["users"]},
+              "embeds": [{
+                  "title": "🧪 Deploy check FAILED",
+                  "color": 0xE74C3C,
+                  "description": (
+                      f"The workflow failed before it could report on the site.\n"
+                      f"Revision `{sha}`\n[View the run]({url})\n\n"
+                      "Alerts may not reach you until this is fixed."
+                  ),
+              }],
+          }
+          print(json.dumps(payload))
+          PY
+          curl -sS -X POST -H "Content-Type: application/json" \
+            -d @payload.json "$DISCORD_WEBHOOK_URL" > /dev/null
+          echo "reported failure to Discord (run: $RUN_URL)"

@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+
+# Real site profile: domain, endpoint and venue labels. Never commit this.
+# Copy site.example.yaml to site.yaml and fill it in locally; CI reads $SITE_PROFILE.
+site.yaml
+
+# Machine-local Claude Code permission allowlist; not useful to others.
+.claude/settings.local.json
+
+# Editor-local settings. Nothing here belongs in a public repo.
+.vscode/
+
+# Cygwin/MSYS crash dumps
+*.stackdump

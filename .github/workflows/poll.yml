@@ -1,0 +1,97 @@
+name: Poll booking slots
+
+# Cron only *starts* these jobs; it does not set the polling cadence. GitHub's
+# scheduled workflows are throttled, drift 5-15 minutes routinely, and get dropped
+# under load, so a "*/3" schedule would yield erratic 10-20 minute resolution. Each
+# job instead paces itself internally (see --loop), turning unreliable scheduling into
+# a reliable 3-minute cadence.
+#
+# The five UTC start times below span the 9am-5pm Eastern window in BOTH DST states
+# (13:00-21:00 UTC in EDT, 14:00-22:00 UTC in EST). The real boundary is enforced in
+# Python via zoneinfo, so nothing silently shifts in November - see config.interval_at.
+#
+# Wall clock is ~10h/day, which is free only because Actions minutes are unlimited on
+# public repositories. On a private repo, drop --loop and switch to a short "*/5" cron
+# instead (~960 min/month), accepting 10-20 minute latency from cron drift.
+
+on:
+  schedule:
+    # Weekdays only (1-5 = Mon-Fri), matching the windows in rules.yaml. The Python
+    # window gate is still the authority; these just avoid starting jobs that would
+    # immediately find nothing to do. Note cron's day-of-week is evaluated in UTC, so a
+    # job started late Friday UTC is still Friday in Eastern time.
+    - cron: "55 12 * * 1-5"
+    - cron: "55 14 * * 1-5"
+    - cron: "55 16 * * 1-5"
+    - cron: "55 18 * * 1-5"
+    - cron: "55 20 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Parse and report without posting to Discord"
+        type: boolean
+        default: false
+      ignore_window:
+        description: "Poll even outside the configured time windows"
+        type: boolean
+        default: false
+
+concurrency:
+  # Never two writers to state/seen.json. Queue rather than cancel, so a run that is
+  # mid-poll is allowed to persist what it already found.
+  group: poll
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 135 # just above --max-runtime so a wedged job can't run away
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Poll
+        env:
+          # Target details live in a secret, so the public repo never names the site.
+          SITE_PROFILE: ${{ secrets.SITE_PROFILE }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
+        run: |
+          python -m slotwatch.main --loop --max-runtime 115 \
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            ${{ inputs.ignore_window && '--ignore-window' || '' }}
+
+      - name: Persist state
+        # Runs even if the poll step failed, so a crash mid-window doesn't discard
+        # detections already written to disk.
+        if: always()
+        run: |
+          if [ -z "$(git status --porcelain state/)" ]; then
+            echo "state unchanged; nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/
+          git commit -m "chore: slot watcher state [skip ci]"
+          # Another run may have pushed while this one was polling.
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "push rejected, rebasing (attempt $attempt)"
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          done
+          echo "could not push state after 3 attempts" >&2
+          exit 1
