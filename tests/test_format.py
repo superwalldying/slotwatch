@@ -6,6 +6,8 @@ from __future__ import annotations
 import datetime as dt
 from decimal import Decimal
 
+import pytest
+
 from slotwatch.format import (
     COLOR_TEST,
     COLOR_TEST_FAIL,
@@ -16,6 +18,7 @@ from slotwatch.format import (
     USERNAME_LIMIT,
     build_payload,
     build_test_ping,
+    normalize_mention,
     payload_size,
 )
 from slotwatch.models import Availability, Event, EventType, Slot
@@ -400,3 +403,45 @@ def test_health_embed_is_still_appended_alongside_tab_groups():
     ]
 
     assert len(build_payload(events, tab_display=TAB_DISPLAY)["embeds"]) == 3
+
+
+# --------------------------------------------------------------------------
+# Mention normalisation
+# --------------------------------------------------------------------------
+
+
+def test_bare_user_id_is_wrapped_so_it_actually_pings():
+    """A bare ID renders as literal text - the alert looks fine but never buzzes."""
+    payload = build_payload([REOPENED], mention="119290074629275652")
+
+    assert payload["content"].startswith("<@119290074629275652>")
+
+
+def test_already_formatted_mention_is_left_alone():
+    payload = build_payload([REOPENED], mention="<@42>")
+
+    assert payload["content"].startswith("<@42>")
+    assert "<@<@" not in payload["content"]
+
+
+def test_role_mention_is_preserved():
+    payload = build_payload([REOPENED], mention="<@&999>")
+
+    assert payload["content"].startswith("<@&999>")
+
+
+def test_blank_mention_is_treated_as_absent():
+    assert "<@" not in build_payload([REOPENED], mention="   ")["content"]
+    assert "allowed_mentions" not in build_payload([REOPENED], mention="   ")
+
+
+def test_deploy_check_normalises_the_mention_too():
+    assert _ping(mention="119290074629275652")["content"].startswith("<@1192900746292756")
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("42", "<@42>"), ("<@42>", "<@42>"), ("<@!42>", "<@!42>"),
+    ("<@&42>", "<@&42>"), ("", None), (None, None), ("  42  ", "<@42>"),
+])
+def test_normalize_mention_cases(raw, expected):
+    assert normalize_mention(raw) == expected

@@ -58,9 +58,11 @@ notify:
 # Rules scope by `tab:` rather than by venue name. The venue strings differ in
 # formatting between tabs, so matching them is a silent-failure trap.
 rules:
-  # The originally requested slot. All levels for a date are released together, so this
-  # narrow rule still tells you a whole new date has dropped - no broad rule needed.
-  # `reopened` also catches a cancellation freeing this exact slot.
+  # Brandeis Sunday, Court 1, the 4pm block - the only Sunday slot of interest.
+  #   reopened -> a cancellation frees this exact slot
+  #   new_slot -> a new Sunday date has dropped. All levels for a date are released at
+  #               once, so this narrow rule still detects the whole drop; no broad
+  #               catch-all rule is needed.
   - name: "Sunday Court 1, late block"
     enabled: true
     tab: primary
@@ -69,21 +71,21 @@ rules:
     date: any
     triggers: [new_slot, reopened]
 
-  # Wider Sunday coverage: the narrow slot above is full on nearly every listed date, so
-  # without this you may hear nothing for weeks. Disable if it proves noisy.
-  - name: "Any Sunday Intermediate opening"
-    enabled: true
-    tab: primary
-    level: "Intermediate - Court [12]"
-    match: regex
-    date: any
-    triggers: [new_slot, reopened]
-
-  # Beacon: new date drops only, no cancellation alerts. Both levels are released
-  # together, so no level filter is needed - and omitting it means a renamed or added
-  # level still gets caught.
+  # Beacon: new date drops only. No level filter, so an added or renamed level is still
+  # caught, and no `reopened` so cancellations stay quiet.
   - name: "New Beacon date"
     enabled: true
     tab: beacon
     date: any
     triggers: [new_slot]
+
+  # --- Not enabled: wider Sunday coverage -------------------------------------------
+  # Court 1 at 4pm is full on every currently listed date, so the rules above may stay
+  # silent for a while. Uncomment to also hear about Court 2 and the midday block.
+  # - name: "Any Sunday Intermediate opening"
+  #   enabled: true
+  #   tab: primary
+  #   level: "Intermediate - Court [12]"
+  #   match: regex
+  #   date: any
+  #   triggers: [new_slot, reopened]

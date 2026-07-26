@@ -39,6 +39,23 @@ MAX_EMBEDS = 10
 _DESCRIPTION_BUDGET = 3500
 
 
+def normalize_mention(value: str | None) -> str | None:
+    """Accept a bare user ID as well as the full `<@ID>` form.
+
+    Discord only renders a real ping for `<@ID>`; a bare numeric ID arrives as literal
+    text, so the alert looks like it worked while never actually buzzing your phone.
+    Pasting just the ID is the natural mistake, so normalise rather than punish it.
+    """
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if text.isdigit():
+        return f"<@{text}>"
+    return text
+
+
 def _apply_identity(
     payload: dict, username: str | None, avatar_url: str | None
 ) -> dict:
@@ -169,6 +186,7 @@ def build_payload(
     if not events:
         return None
 
+    mention = normalize_mention(mention)
     slot_events = [e for e in events if e.type is not EventType.HEALTH and e.slot]
     health_events = [e for e in events if e.type is EventType.HEALTH]
 
@@ -237,6 +255,7 @@ def build_test_ping(
     a deploy check that looked like an opening would be worse than no check at all.
     """
     healthy = error is None and not anomalies
+    mention = normalize_mention(mention)
 
     lines = []
     if error:
