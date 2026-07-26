@@ -62,16 +62,18 @@ def collect(
     Aggregating before diffing matters: state.slots is keyed by game_id across all
     tabs, so recording one tab at a time would erase the others.
     """
-    def parse(html: str) -> ParseResult:
+    def parse(html: str, tab: str = "") -> ParseResult:
         return parse_table(
             html,
             today=today,
+            tab=tab,
             field_name=site.field_name,
             empty_marker=site.empty_marker,
         )
 
     if fixture is not None:
-        return parse(fixture)
+        # A fixture stands in for the first configured tab.
+        return parse(fixture, tab=config.poll.tabs[0] if config.poll.tabs else "")
 
     slots: tuple = ()
     anomalies: tuple = ()
@@ -79,7 +81,7 @@ def collect(
 
     for key in config.poll.tabs:
         html = fetch_tab(site.tab(key), site, session=session)
-        result = parse(html)
+        result = parse(html, tab=key)
         slots += result.slots
         anomalies += tuple(f"[{key}] {a}" for a in result.anomalies)
         empties += int(result.is_empty_state)
@@ -176,6 +178,7 @@ def _deliver(
     )
     payload = build_payload(
         to_send, mention=mention, tab_label=label, book_url=site.book_url,
+        tab_display=site.tab_display(),
         username=config.notify.username, avatar_url=config.notify.avatar_url,
     )
 

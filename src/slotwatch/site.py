@@ -37,6 +37,8 @@ class Tab:
     buttonid: int
     filterid: int
     gametypeid: int = 1
+    # Optional per-tab booking page; falls back to the site-wide book_url.
+    book_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,13 @@ class Site:
     user_agent: str = (
         "slotwatch/0.1 (personal booking-slot watcher; low-frequency, 1 request per poll)"
     )
+
+    def tab_display(self) -> dict[str, tuple[str, str]]:
+        """tab key -> (label, booking url), for grouping alerts per venue."""
+        return {
+            key: (tab.label, tab.book_url or self.book_url)
+            for key, tab in self.tabs.items()
+        }
 
     def tab(self, key: str) -> Tab:
         if key not in self.tabs:
@@ -78,6 +87,7 @@ def _build(raw: dict) -> Site:
             buttonid=int(entry["buttonid"]),
             filterid=int(entry["filterid"]),
             gametypeid=int(entry.get("gametypeid", raw.get("gametypeid", 1))),
+            book_url=(str(entry["book_url"]) if entry.get("book_url") else None),
         )
     if not tabs:
         raise SiteConfigError("site profile defines no tabs")

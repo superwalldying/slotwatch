@@ -34,6 +34,10 @@ class Slot:
     availability: Availability
     spaces_left: int | None  # set for LIMITED and SOLD_OUT(0); None for OPEN
     radio_disabled: bool  # cross-checked against availability
+    # Which configured tab this row came from. Lets alerts be grouped and attributed
+    # per venue, and lets rules target a tab instead of matching venue text - the venue
+    # strings are formatted inconsistently between tabs, so matching them is a trap.
+    tab: str = ""
 
     @property
     def label(self) -> str:
@@ -81,6 +85,7 @@ class WatchRule:
 
     name: str
     enabled: bool = True
+    tab: str | None = None  # restrict to one configured tab; None matches any
     gym: str | None = None
     level: str | None = None
     time: str | None = None

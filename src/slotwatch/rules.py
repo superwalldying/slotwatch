@@ -48,6 +48,10 @@ def matches(rule: WatchRule, slot: Slot) -> bool:
     if not rule.enabled:
         return False
 
+    # Tab is an exact key, never a pattern - it is our own identifier, not site text.
+    if not _is_wildcard(rule.tab) and rule.tab.strip() != slot.tab:
+        return False
+
     regex = rule.match == "regex"
     for pattern, value in (
         (rule.gym, slot.gym),
@@ -134,6 +138,7 @@ def rules_from_config(entries: list[dict[str, Any]] | None) -> list[WatchRule]:
             WatchRule(
                 name=name,
                 enabled=bool(entry.get("enabled", True)),
+                tab=_opt(entry.get("tab")),
                 gym=_opt(entry.get("gym")),
                 level=_opt(entry.get("level")),
                 time=_opt(entry.get("time")),

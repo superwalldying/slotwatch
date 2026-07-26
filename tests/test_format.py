@@ -334,3 +334,69 @@ def test_overlong_username_is_truncated_to_discords_limit():
     payload = build_payload([REOPENED], username="x" * 200)
 
     assert len(payload["username"]) == USERNAME_LIMIT
+
+
+# --------------------------------------------------------------------------
+# Multi-tab grouping
+# --------------------------------------------------------------------------
+
+TAB_DISPLAY = {
+    "primary": ("Sunday sessions", "https://booking.invalid/sun"),
+    "beacon": ("Friday sessions", "https://booking.invalid/fri"),
+}
+
+
+def test_two_tabs_produce_one_embed_each_with_the_right_venue_and_link():
+    events = [
+        Event(type=EventType.REOPENED, slot=slot(tab="primary"),
+              previous=Availability.SOLD_OUT, rule_name="a"),
+        Event(type=EventType.NEW_SLOT, slot=slot(game_id="99", tab="beacon"), rule_name="b"),
+    ]
+
+    payload = build_payload(events, tab_display=TAB_DISPLAY)
+
+    assert len(payload["embeds"]) == 2
+    titles = [e["title"] for e in payload["embeds"]]
+    assert any("Sunday sessions" in t for t in titles)
+    assert any("Friday sessions" in t for t in titles)
+    urls = {e["url"] for e in payload["embeds"]}
+    assert urls == {"https://booking.invalid/sun", "https://booking.invalid/fri"}
+
+
+def test_single_tab_still_produces_one_embed():
+    events = [Event(type=EventType.NEW_SLOT, slot=slot(tab="beacon"), rule_name="b")]
+
+    payload = build_payload(events, tab_display=TAB_DISPLAY)
+
+    assert len(payload["embeds"]) == 1
+    assert "Friday sessions" in payload["embeds"][0]["title"]
+
+
+def test_multi_tab_summary_names_the_venues():
+    """Otherwise the notification preview can't tell you which venue opened up."""
+    events = [
+        Event(type=EventType.NEW_SLOT, slot=slot(tab="primary"), rule_name="a"),
+        Event(type=EventType.NEW_SLOT, slot=slot(game_id="99", tab="beacon"), rule_name="b"),
+    ]
+
+    content = build_payload(events, tab_display=TAB_DISPLAY)["content"]
+
+    assert "Sunday sessions" in content and "Friday sessions" in content
+
+
+def test_unknown_tab_falls_back_to_the_generic_label():
+    events = [Event(type=EventType.NEW_SLOT, slot=slot(tab="mystery"), rule_name="a")]
+
+    payload = build_payload(events, tab_label="sessions", tab_display=TAB_DISPLAY)
+
+    assert "sessions" in payload["embeds"][0]["title"]
+
+
+def test_health_embed_is_still_appended_alongside_tab_groups():
+    events = [
+        Event(type=EventType.NEW_SLOT, slot=slot(tab="primary"), rule_name="a"),
+        Event(type=EventType.NEW_SLOT, slot=slot(game_id="99", tab="beacon"), rule_name="b"),
+        Event(type=EventType.HEALTH, message="drifted"),
+    ]
+
+    assert len(build_payload(events, tab_display=TAB_DISPLAY)["embeds"]) == 3

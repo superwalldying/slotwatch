@@ -20,15 +20,18 @@ gametypeid: 1
 
 # buttonid/filterid come from the tab-switch calls in the page's own JavaScript.
 # `label` is cosmetic - it appears in Discord alerts.
+# Rules reference these keys via `tab:`, which is more robust than matching venue
+# text - venue names are often formatted inconsistently between tabs.
 tabs:
   primary:
     label: "Sunday sessions"
     buttonid: 5
     filterid: 18
-  # secondary:
-  #   label: "Friday sessions"
-  #   buttonid: 4
-  #   filterid: 6
+  secondary:
+    label: "Friday sessions"
+    buttonid: 3
+    filterid: 34
+    # book_url: "https://..."   # optional; overrides the site-wide book_url
 
 # Structural, rarely need changing. Defaults suit a standard WordPress booking table.
 # field_name: "f_GameID"

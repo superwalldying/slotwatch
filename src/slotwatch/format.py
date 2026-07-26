@@ -156,10 +156,16 @@ def build_payload(
     mention: str | None = None,
     tab_label: str = TAB_LABEL,
     book_url: str = BOOK_URL,
+    tab_display: dict[str, tuple[str, str]] | None = None,
     username: str | None = None,
     avatar_url: str | None = None,
 ) -> dict | None:
-    """One payload for the whole batch, or None when there is nothing to say."""
+    """One payload for the whole batch, or None when there is nothing to say.
+
+    When slots come from several tabs, they are grouped into one embed per tab so each
+    carries the right venue name and booking link. Without that, a multi-venue alert is
+    ambiguous - the venue is not in the slot line, and two tabs can share a weekday.
+    """
     if not events:
         return None
 
@@ -167,14 +173,28 @@ def build_payload(
     health_events = [e for e in events if e.type is EventType.HEALTH]
 
     embeds: list[dict] = []
-    if slot_events:
-        embeds.append(_slot_embed(slot_events, tab_label, book_url))
+
+    # Preserve first-seen tab order so the output is deterministic.
+    groups: dict[str, list[Event]] = {}
+    for event in slot_events:
+        groups.setdefault(event.slot.tab, []).append(event)
+
+    for tab_key, group in groups.items():
+        label, url = tab_label, book_url
+        if tab_display and tab_key in tab_display:
+            label, url = tab_display[tab_key]
+        embeds.append(_slot_embed(group, label, url))
+
     if health_events:
         embeds.append(_health_embed(health_events))
 
     payload: dict = {"embeds": embeds[:MAX_EMBEDS]}
 
     summary = _summary(slot_events, health_events)
+    if len(groups) > 1 and tab_display:
+        venues = [tab_display[k][0] for k in groups if k in tab_display]
+        if venues:
+            summary += " (" + ", ".join(venues) + ")"
     content = f"{mention} {summary}".strip() if mention else summary
     payload["content"] = content[:CONTENT_LIMIT]
     if mention:

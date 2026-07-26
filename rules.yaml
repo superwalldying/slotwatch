@@ -5,8 +5,9 @@
 # in the runtime site profile. See site.example.yaml.
 
 poll:
-  # Tab keys as defined in your site profile's `tabs:` section.
-  tabs: [primary]
+  # Tab keys as defined in your site profile's `tabs:` section. Each is one extra
+  # request per poll.
+  tabs: [primary, beacon]
 
   # All window times below are in this zone, evaluated with real DST rules.
   timezone: America/New_York
@@ -54,24 +55,35 @@ notify:
   username: slotwatch
   # avatar_url: "https://example.com/icon.png"   # optional
 
+# Rules scope by `tab:` rather than by venue name. The venue strings differ in
+# formatting between tabs, so matching them is a silent-failure trap.
 rules:
-  # The originally requested slot. Note it has been full on every listed date, so
-  # `reopened` is the trigger that will actually fire.
-  #
-  # `gym` is intentionally omitted: we poll a single venue's tab, so it would be
-  # redundant - and naming venues in a committed file defeats the point.
-  - name: "Court 1, late block"
+  # The originally requested slot. All levels for a date are released together, so this
+  # narrow rule still tells you a whole new date has dropped - no broad rule needed.
+  # `reopened` also catches a cancellation freeing this exact slot.
+  - name: "Sunday Court 1, late block"
     enabled: true
+    tab: primary
     level: "Intermediate - Court 1"
     time: "4:00 pm - 7:30 pm"
     date: any
     triggers: [new_slot, reopened]
 
-  # Companion rule: without something broader you may hear nothing for weeks, because
-  # every Intermediate slot is currently full. Covers both courts, both blocks.
-  - name: "Any Intermediate opening"
+  # Wider Sunday coverage: the narrow slot above is full on nearly every listed date, so
+  # without this you may hear nothing for weeks. Disable if it proves noisy.
+  - name: "Any Sunday Intermediate opening"
     enabled: true
+    tab: primary
     level: "Intermediate - Court [12]"
     match: regex
     date: any
     triggers: [new_slot, reopened]
+
+  # Beacon: new date drops only, no cancellation alerts. Both levels are released
+  # together, so no level filter is needed - and omitting it means a renamed or added
+  # level still gets caught.
+  - name: "New Beacon date"
+    enabled: true
+    tab: beacon
+    date: any
+    triggers: [new_slot]

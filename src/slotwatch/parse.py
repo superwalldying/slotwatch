@@ -147,6 +147,7 @@ def parse_table(
     html: str,
     *,
     today: dt.date,
+    tab: str = "",
     field_name: str = DEFAULT_FIELD_NAME,
     empty_marker: str = DEFAULT_EMPTY_MARKER,
 ) -> ParseResult:
@@ -237,6 +238,7 @@ def parse_table(
                 availability=availability,
                 spaces_left=spaces_left,
                 radio_disabled=disabled,
+                tab=tab,
             )
         )
 

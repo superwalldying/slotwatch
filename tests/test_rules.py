@@ -24,6 +24,7 @@ def slot(**overrides) -> Slot:
         availability=Availability.LIMITED,
         spaces_left=2,
         radio_disabled=False,
+        tab="primary",
     )
     return Slot(**{**base, **overrides})
 
@@ -221,3 +222,45 @@ def test_rules_from_config_rejects_unknown_trigger():
 def test_rules_from_config_requires_a_name():
     with pytest.raises(ValueError, match="name"):
         rules_from_config([{"level": "Beginner"}])
+
+
+# --------------------------------------------------------------------------
+# Tab scoping - more robust than matching venue text
+# --------------------------------------------------------------------------
+
+
+def test_rule_restricted_to_a_tab_ignores_other_tabs():
+    rule = WatchRule(name="beacon only", tab="beacon")
+
+    assert matches(rule, slot(tab="beacon")) is True
+    assert matches(rule, slot(tab="primary")) is False
+
+
+def test_rule_without_a_tab_matches_any_tab():
+    rule = WatchRule(name="anywhere")
+
+    assert matches(rule, slot(tab="beacon")) is True
+    assert matches(rule, slot(tab="primary")) is True
+
+
+def test_tab_is_matched_exactly_even_in_regex_mode():
+    """tab is our own key, not site text, so it must never be treated as a pattern."""
+    rule = WatchRule(name="r", tab="prim", level="Intermediate", match="regex")
+
+    assert matches(rule, slot(tab="primary")) is False
+
+
+def test_tab_scoping_survives_inconsistent_venue_formatting():
+    """The real venues are 'Brandeis H.S.' and 'Beacon HS' - matching those exactly is a
+    trap, which is why rules target the tab instead."""
+    rule = WatchRule(name="beacon", tab="beacon", triggers=frozenset({EventType.NEW_SLOT}))
+    event = Event(type=EventType.NEW_SLOT, slot=slot(tab="beacon", gym="Beacon HS"))
+
+    assert filter_events([event], [rule])[0].rule_name == "beacon"
+
+
+def test_rules_from_config_reads_the_tab_key():
+    rules = rules_from_config([{"name": "b", "tab": "beacon", "triggers": ["new_slot"]}])
+
+    assert rules[0].tab == "beacon"
+    assert rules[0].triggers == frozenset({EventType.NEW_SLOT})
