@@ -18,6 +18,7 @@ from slotwatch.format import (
     USERNAME_LIMIT,
     build_payload,
     build_test_ping,
+    classify_mention,
     normalize_mention,
     payload_size,
 )
@@ -440,8 +441,53 @@ def test_deploy_check_normalises_the_mention_too():
 
 
 @pytest.mark.parametrize("raw,expected", [
-    ("42", "<@42>"), ("<@42>", "<@42>"), ("<@!42>", "<@!42>"),
-    ("<@&42>", "<@&42>"), ("", None), (None, None), ("  42  ", "<@42>"),
+    ("424242424242", "<@424242424242>"),
+    ("<@424242424242>", "<@424242424242>"),
+    ("<@!424242424242>", "<@!424242424242>"),
+    ("<@&424242424242>", "<@&424242424242>"),
+    ("  424242424242  ", "<@424242424242>"),
+    ("", None), (None, None),
 ])
 def test_normalize_mention_cases(raw, expected):
     assert normalize_mention(raw) == expected
+
+
+def test_short_numbers_are_not_mistaken_for_user_ids():
+    """Discord snowflakes are ~18 digits; treating '42' as one would be a false positive."""
+    assert normalize_mention("42") == "42"
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("119290074629275652", "<@119290074629275652>"),
+    ("@119290074629275652", "<@119290074629275652>"),   # copied from the Discord UI
+    ("<@119290074629275652>", "<@119290074629275652>"),
+    ("<119290074629275652>", "<@119290074629275652>"),
+    ("<@119290074629275652", "<@119290074629275652>"),  # truncated paste
+    ("  @119290074629275652  ", "<@119290074629275652>"),
+    ("<@!42424242424>", "<@!42424242424>"),
+    ("<@&42424242424>", "<@&42424242424>"),
+])
+def test_every_plausible_mention_form_becomes_a_real_ping(raw, expected):
+    assert normalize_mention(raw) == expected
+
+
+def test_unmentionable_value_is_passed_through_not_silently_dropped():
+    """A username#discriminator cannot be pinged; keep it visible so the cause is obvious."""
+    assert normalize_mention("someone#1234") == "someone#1234"
+
+
+@pytest.mark.parametrize("raw,shape", [
+    (None, "none"),
+    ("", "none"),
+    ("<@119290074629275652>", "already-formatted"),
+    ("119290074629275652", "bare-id (wrapped)"),
+    ("@119290074629275652", "bare-id (wrapped)"),
+    ("someone#1234", "unrecognised (sent as-is; will NOT ping)"),
+])
+def test_classify_mention_describes_the_shape_only(raw, shape):
+    assert classify_mention(raw) == shape
+
+
+def test_classify_never_leaks_the_id():
+    """Actions logs are public on a public repo."""
+    assert "119290074629275652" not in classify_mention("119290074629275652")

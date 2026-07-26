@@ -35,7 +35,7 @@ from .config import (
 )
 from .diff import diff, suppress_recent
 from .fetch import FetchError, build_session, fetch_tab
-from .format import build_payload, build_test_ping
+from .format import build_payload, build_test_ping, classify_mention
 from .models import Event, EventType, ParseResult
 from .notify import NotifyError, send
 from .parse import parse_table
@@ -256,6 +256,7 @@ def run_test_ping(
         avatar_url=config.notify.avatar_url,
     )
 
+    log.info("mention form: %s", classify_mention(mention))
     log.info(
         "deploy check: %d slots, %d bookable, %d watched, %d anomalies%s",
         len(result.slots), len(bookable), len(watched), len(result.anomalies),

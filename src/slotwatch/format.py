@@ -10,6 +10,7 @@ details live in this file.
 from __future__ import annotations
 
 import json
+import re
 
 from .models import Availability, Event, EventType
 
@@ -18,6 +19,11 @@ from .models import Availability, Event, EventType
 # click rather than pretending the link lands there.
 BOOK_URL = ""
 TAB_LABEL = "sessions"
+
+# A valid Discord mention: user <@123>, nickname <@!123>, or role <@&123>.
+_MENTION_RE = re.compile(r"<@[!&]?\d{5,}>")
+# Discord snowflakes are 17-20 digits in practice; require enough to avoid false hits.
+_BARE_ID_RE = re.compile(r"\d{5,}")
 
 # Discord caps the webhook display-name override at 80 characters.
 USERNAME_LIMIT = 80
@@ -39,20 +45,48 @@ MAX_EMBEDS = 10
 _DESCRIPTION_BUDGET = 3500
 
 
-def normalize_mention(value: str | None) -> str | None:
-    """Accept a bare user ID as well as the full `<@ID>` form.
+def classify_mention(value: str | None) -> str:
+    """Describe the *shape* of a configured mention, for logging.
 
-    Discord only renders a real ping for `<@ID>`; a bare numeric ID arrives as literal
-    text, so the alert looks like it worked while never actually buzzing your phone.
-    Pasting just the ID is the natural mistake, so normalise rather than punish it.
+    Deliberately never returns the value: Actions logs are public on a public repo, and
+    there is no reason to publish a Discord user ID there. Derived from
+    normalize_mention so the two can never disagree about what will happen.
+    """
+    if value is None or not value.strip():
+        return "none"
+    text = value.strip()
+    if _MENTION_RE.fullmatch(text):
+        return "already-formatted"
+    if normalize_mention(text) != text:
+        return "bare-id (wrapped)"
+    return "unrecognised (sent as-is; will NOT ping)"
+
+
+def normalize_mention(value: str | None) -> str | None:
+    """Coerce a configured mention into the only form Discord actually pings on.
+
+    Discord renders a ping only for `<@ID>`. Anything else - a bare `123`, an `@123`
+    copied from the UI, a `username#1234` - arrives as plain text, so the alert looks
+    like it worked while never buzzing a phone. That is the exact silent-failure shape
+    this project exists to avoid, so accept the near-misses instead of punishing them.
     """
     if value is None:
         return None
     text = value.strip()
     if not text:
         return None
-    if text.isdigit():
-        return f"<@{text}>"
+
+    # Already a valid user/role/nickname mention - leave untouched.
+    if _MENTION_RE.fullmatch(text):
+        return text
+
+    # Tolerate stray wrapping and a leading @, e.g. "@123", "<123>", "<@123", "@<123>".
+    stripped = text.strip("<>").lstrip("@").strip("<>").strip()
+    if _BARE_ID_RE.fullmatch(stripped):
+        return f"<@{stripped}>"
+
+    # Not something we can turn into a ping (e.g. "name#1234"). Pass through so it is
+    # visible in the message rather than silently dropped.
     return text
 
 
