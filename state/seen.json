@@ -1,0 +1,32 @@
+{
+  "failure_streak": 0,
+  "notified": {},
+  "seeded": true,
+  "slots": {
+    "16209": "open",
+    "16210": "sold_out",
+    "16211": "sold_out",
+    "16212": "sold_out",
+    "16213": "sold_out",
+    "16224": "sold_out",
+    "16225": "open",
+    "16226": "sold_out",
+    "16227": "sold_out",
+    "16228": "sold_out",
+    "16229": "limited",
+    "16240": "sold_out",
+    "16241": "open",
+    "16242": "limited",
+    "16243": "sold_out",
+    "16244": "sold_out",
+    "16245": "open",
+    "16256": "open",
+    "16320": "sold_out",
+    "16321": "limited",
+    "16322": "sold_out",
+    "16323": "limited",
+    "16324": "sold_out",
+    "16325": "limited"
+  },
+  "version": 1
+}
