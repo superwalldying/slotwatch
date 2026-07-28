@@ -2,16 +2,16 @@
   "day": {
     "alerts": 0,
     "date": "2026-07-28",
-    "ended": false,
+    "ended": true,
     "failures": 0,
-    "polls": 38,
+    "polls": 58,
     "started": true
   },
   "failure_streak": 0,
   "notified": {},
   "seeded": true,
   "slots": {
-    "16209": "limited",
+    "16209": "sold_out",
     "16210": "sold_out",
     "16211": "sold_out",
     "16212": "sold_out",
@@ -22,7 +22,7 @@
     "16227": "sold_out",
     "16228": "sold_out",
     "16229": "limited",
-    "16240": "limited",
+    "16240": "sold_out",
     "16241": "open",
     "16242": "sold_out",
     "16243": "sold_out",
