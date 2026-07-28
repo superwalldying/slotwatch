@@ -39,6 +39,15 @@ REQUIRED_COLUMNS = ("date", "gym", "level", "time", "fee", "available")
 _SPACES_RE = re.compile(r"^(\d+)\s+spaces?$")
 _MONTH_DAY_RE = re.compile(r"(\d{1,2})\s*/\s*(\d{1,2})")
 
+# "4:00 pm - 7:30 pm", and the near-misses worth tolerating: en/em dashes, "to", a
+# missing meridiem on the opening half ("9:00 - 12:00 pm"), and "a.m."-style periods.
+_TIME_RANGE_RE = re.compile(
+    r"(?P<sh>\d{1,2})(?::(?P<sm>\d{2}))?\s*(?:(?P<sap>[ap])\.?\s*m\.?)?"
+    r"\s*(?:-|–|—|to)\s*"
+    r"(?P<eh>\d{1,2})(?::(?P<em>\d{2}))?\s*(?P<eap>[ap])\.?\s*m\.?",
+    re.IGNORECASE,
+)
+
 
 def normalize(text: str) -> str:
     """Collapse the page's &nbsp;-padded, wildly-indented cell text."""
@@ -60,6 +69,50 @@ def parse_availability(text: str) -> tuple[Availability, int | None]:
     if match := _SPACES_RE.match(value):
         return Availability.LIMITED, int(match.group(1))
     return Availability.UNKNOWN, None
+
+
+def _clock(hour: str, minute: str | None, meridiem: str | None) -> dt.time | None:
+    value, minutes = int(hour), int(minute or 0)
+    if not 1 <= value <= 12 or minutes > 59:
+        return None
+    half = (meridiem or "").casefold()
+    if half == "a":
+        value = 0 if value == 12 else value
+    elif half == "p":
+        value = 12 if value == 12 else value + 12
+    else:
+        return None
+    return dt.time(value, minutes)
+
+
+def parse_time_range(text: str) -> tuple[dt.time | None, dt.time | None]:
+    """Split "4:00 pm - 7:30 pm" into its two ends.
+
+    Used only to tell whether a session is already over, so anything unreadable yields
+    (None, None) and the slot is treated as still live. That direction is deliberate:
+    suppressing an alert means silence, and silence hiding a real opening is the exact
+    failure this bot exists to prevent. See models.Slot.ends_at.
+    """
+    match = _TIME_RANGE_RE.search(normalize(text))
+    if not match:
+        return None, None
+
+    closing = match.group("eap")
+    end = _clock(match.group("eh"), match.group("em"), closing)
+    opening = match.group("sap")
+    if opening:
+        return _clock(match.group("sh"), match.group("sm"), opening), end
+
+    # "9:00 - 12:00 pm": an unqualified opening half borrows the closing meridiem, but
+    # only if that reads forwards. Borrowing blindly turns 9am-12pm into 9pm-12pm, an
+    # inverted range that ends_at would then mistake for an overnight block.
+    start = _clock(match.group("sh"), match.group("sm"), closing)
+    if start is not None and end is not None and start >= end:
+        flipped = _clock(match.group("sh"), match.group("sm"),
+                         "a" if closing.casefold() == "p" else "p")
+        if flipped is not None and flipped < end:
+            start = flipped
+    return start, end
 
 
 def infer_year(month: int, day: int, today: dt.date) -> int:
@@ -209,6 +262,13 @@ def parse_table(
         else:
             anomalies.append(f"row {game_id} has unparseable date {date_raw!r}")
 
+        time_raw = cell("time")
+        start_time, end_time = parse_time_range(time_raw)
+        if end_time is None:
+            # Flagged like an unparseable date or fee: the bot can still alert on this
+            # row, it just can no longer tell when the session is over.
+            anomalies.append(f"row {game_id} has unparseable time {time_raw!r}")
+
         fee = _parse_fee(cell("fee"))
         if fee is None:
             anomalies.append(f"row {game_id} has unparseable fee {cell('fee')!r}")
@@ -233,12 +293,14 @@ def parse_table(
                 date=date,
                 gym=cell("gym"),
                 level=cell("level"),
-                time_raw=cell("time"),
+                time_raw=time_raw,
                 fee=fee,
                 availability=availability,
                 spaces_left=spaces_left,
                 radio_disabled=disabled,
                 tab=tab,
+                start_time=start_time,
+                end_time=end_time,
             )
         )
 

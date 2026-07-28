@@ -38,10 +38,29 @@ class Slot:
     # per venue, and lets rules target a tab instead of matching venue text - the venue
     # strings are formatted inconsistently between tabs, so matching them is a trap.
     tab: str = ""
+    # time_raw split into its two ends, when it could be read. Only `ends_at` consumes
+    # these; time_raw stays the single source of truth for anything shown to a human.
+    start_time: dt.time | None = None
+    end_time: dt.time | None = None
 
     @property
     def label(self) -> str:
         return f"{self.date_raw} · {self.level} · {self.time_raw}"
+
+    @property
+    def ends_at(self) -> dt.datetime | None:
+        """Naive local wall-clock moment this session finishes, if it can be known.
+
+        None whenever the date or the time could not be parsed, which callers must read
+        as "assume it is still live" rather than "assume it is over" - see diff.has_ended.
+        """
+        if self.date is None or self.end_time is None:
+            return None
+        day = self.date
+        if self.start_time is not None and self.end_time <= self.start_time:
+            # An overnight block - "10:00 pm - 1:00 am" finishes the following day.
+            day += dt.timedelta(days=1)
+        return dt.datetime.combine(day, self.end_time)
 
 
 @dataclass(frozen=True, slots=True)

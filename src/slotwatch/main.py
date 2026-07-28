@@ -35,7 +35,7 @@ from .config import (
     local_now,
     next_open,
 )
-from .diff import diff, suppress_recent
+from .diff import diff, has_ended, suppress_recent
 from .fetch import FetchError, build_session, fetch_tab
 from .format import (
     build_day_end,
@@ -126,7 +126,8 @@ def poll_once(
     webhook_url: str | None = None,
     mention: str | None = None,
 ) -> tuple[State, list[Event]]:
-    today = local_now(config, now).date()
+    local = local_now(config, now)
+    today = local.date()
 
     try:
         result = collect(config, site, today=today, session=session, fixture=fixture)
@@ -150,7 +151,13 @@ def poll_once(
         len(result.slots), result.is_empty_state, len(result.anomalies),
     )
 
-    events = diff(state, result, now=now, failure_threshold=config.poll.failure_threshold)
+    events = diff(
+        state, result,
+        now=now,
+        failure_threshold=config.poll.failure_threshold,
+        # Naive, because a session's advertised time is wall-clock at the venue.
+        now_local=local.replace(tzinfo=None),
+    )
     matched = filter_events(events, config.rules)
 
     state, sent, delivery_failed = _deliver(
@@ -237,7 +244,8 @@ def run_test_ping(
     like "nothing has opened up".
     """
     now = dt.datetime.now(dt.UTC)
-    today = local_now(config, now).date()
+    local = local_now(config, now)
+    today = local.date()
     label = (
         site.tab(config.poll.tabs[0]).label
         if len(config.poll.tabs) == 1
@@ -257,8 +265,15 @@ def run_test_ping(
 
     bookable = [s for s in result.slots if s.availability.is_bookable]
     # Synthesise events for currently-bookable slots to show what the rules would catch.
+    # Finished sessions are dropped here for the same reason the poller ignores them, so
+    # the deploy check reports what would actually ping rather than what merely matches.
     watched = filter_events(
-        [Event(type=EventType.NEW_SLOT, slot=s) for s in bookable], config.rules
+        [
+            Event(type=EventType.NEW_SLOT, slot=s)
+            for s in bookable
+            if not has_ended(s, local.replace(tzinfo=None))
+        ],
+        config.rules,
     )
 
     payload = build_test_ping(

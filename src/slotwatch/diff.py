@@ -20,13 +20,33 @@ DEFAULT_FAILURE_THRESHOLD = 3
 _MAX_REPORTED_ANOMALIES = 5
 
 
+def has_ended(slot, now_local: dt.datetime | None) -> bool:
+    """Whether this session is already over, in the venue's own wall-clock time.
+
+    Fails open in three ways - no local clock supplied, an unparseable date, an
+    unparseable time - because suppression here means silence, and silence that hides a
+    real opening is the one failure this bot exists to prevent. We stay quiet only when
+    certain the session is done.
+
+    Measured against the session's *end*, not its start: a spot freed thirty minutes
+    into a three-hour block is still worth taking.
+    """
+    if now_local is None:
+        return False
+    ends = slot.ends_at
+    return ends is not None and ends <= now_local
+
+
 def diff(
     state: State,
     result: ParseResult,
     *,
     now: dt.datetime,
     failure_threshold: int = DEFAULT_FAILURE_THRESHOLD,
+    now_local: dt.datetime | None = None,
 ) -> list[Event]:
+    """Events worth acting on. `now_local` is naive wall-clock time at the venue, and
+    is what lets a finished session be told apart from an upcoming one."""
     events: list[Event] = []
 
     reasons: list[str] = []
@@ -50,6 +70,14 @@ def diff(
         return events
 
     for slot in result.slots:
+        # The site keeps same-day sessions listed, so a cancellation can free a spot in
+        # a block that has already finished. Nothing about that is actionable, and a
+        # ping you cannot act on is how you learn to ignore the ones you can.
+        # Deliberately not filtered out of the observation itself: state.record still
+        # sees the row, so it is not mistaken for having aged off the rolling window.
+        if has_ended(slot, now_local):
+            continue
+
         previous = state.slots.get(slot.game_id)
 
         if previous is None:
