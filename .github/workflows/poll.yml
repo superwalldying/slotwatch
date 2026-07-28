@@ -52,6 +52,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The branch tip, not github.sha. A scheduled run pins github.sha when the run
+          # is *created*; a run that then waits behind the concurrency lock starts with
+          # a SHA that is minutes or hours stale, so the default checkout can miss state
+          # a previous run already pushed. That is precisely how run 30301348989 created
+          # state/seen.json a second time and died on an add/add conflict five seconds
+          # after the previous run pushed the same file.
+          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-python@v5
         with:
@@ -76,22 +84,61 @@ jobs:
         # Runs even if the poll step failed, so a crash mid-window doesn't discard
         # detections already written to disk.
         if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
           if [ -z "$(git status --porcelain state/)" ]; then
             echo "state unchanged; nothing to commit"
             exit 0
           fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state/
-          git commit -m "chore: slot watcher state [skip ci]"
-          # Another run may have pushed while this one was polling.
+
+          # Our freshly-polled state, parked outside the tree so rewinding onto the
+          # remote tip below cannot lose it. Absent only if the poll step died before
+          # its first save, in which case there is nothing of ours to protect.
+          mine="${RUNNER_TEMP}/mine.json"
+          theirs="${RUNNER_TEMP}/theirs.json"
+          rm -f "$mine" "$theirs"
+          if [ -f state/seen.json ]; then
+            cp state/seen.json "$mine"
+          fi
+
+          # Another run may still have pushed while this one polled - the checkout ref
+          # above closes the common case, not a genuine overlap.
           for attempt in 1 2 3; do
-            if git push; then
+            git add state/
+            git diff --cached --quiet || git commit -m "chore: slot watcher state [skip ci]"
+            if git push origin "HEAD:${BRANCH}"; then
+              echo "state pushed on attempt ${attempt}"
               exit 0
             fi
-            echo "push rejected, rebasing (attempt $attempt)"
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+
+            echo "push rejected; merging the remote's state (attempt ${attempt})"
+            git fetch origin "${BRANCH}"
+
+            # NOT a rebase. seen.json is a set of observations: two runs that each
+            # create it conflict add/add, and a line-wise merge of JSON is meaningless.
+            # Taking one side would drop either a sighting or a notified-marker, and a
+            # lost marker re-pings a slot you were already told about. Rewind onto the
+            # remote tip, compute the union in Python, and commit that as an ordinary
+            # fast-forward instead.
+            git show "origin/${BRANCH}:state/seen.json" > "$theirs" 2>/dev/null || rm -f "$theirs"
+            git reset --hard "origin/${BRANCH}"
+            if [ -f "$mine" ]; then
+              cp "$mine" state/seen.json
+              if [ -f "$theirs" ]; then
+                python -m slotwatch.main --state state/seen.json --merge-state "$theirs"
+              fi
+              cp state/seen.json "$mine"
+            fi
+
+            if [ -z "$(git status --porcelain state/)" ]; then
+              echo "remote state already covers this run; nothing to push"
+              exit 0
+            fi
           done
+
           echo "could not push state after 3 attempts" >&2
           exit 1

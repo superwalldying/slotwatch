@@ -32,6 +32,7 @@ COLOR_OPENING = 0x2ECC71  # green
 COLOR_HEALTH = 0xE67E22  # orange
 COLOR_TEST = 0x3498DB  # blue - visually distinct so a deploy check is never mistaken
 COLOR_TEST_FAIL = 0xE74C3C  # red
+COLOR_DAY = 0x95A5A6  # grey - routine liveness, deliberately duller than any alert
 
 # Discord's documented hard limits.
 CONTENT_LIMIT = 2000
@@ -336,6 +337,114 @@ def build_test_ping(
     )
     content = f"{mention} {summary}".strip() if mention else summary
     payload["content"] = content[:CONTENT_LIMIT]
+    if mention:
+        payload["allowed_mentions"] = {"parse": ["users"]}
+    return _apply_identity(payload, username, avatar_url)
+
+
+def coverage_percent(polls: int, expected: int) -> int | None:
+    """Share of the scheduled polls that actually happened, or None if unknowable."""
+    if expected <= 0:
+        return None
+    return round(100 * polls / expected)
+
+
+def build_day_start(
+    *,
+    date_label: str,
+    expected: int,
+    schedule: str = "",
+    username: str | None = None,
+    avatar_url: str | None = None,
+) -> dict:
+    """Opening heartbeat: the watcher is awake and this is what it intends to do.
+
+    No mention. This fires every polling day; a ping that buzzes a phone twice daily
+    would be muted within a week, and a muted channel is how the real alert gets missed.
+    """
+    lines = [f"Watching for the rest of the day — **{expected}** polls scheduled."]
+    if schedule:
+        lines.append(f"Schedule: {schedule}")
+
+    payload: dict = {
+        "content": f"🟢 slotwatch is up for {date_label}",
+        "embeds": [
+            {
+                "title": f"🟢 Polling opened — {date_label}",
+                "color": COLOR_DAY,
+                "description": "\n".join(lines)[:DESCRIPTION_LIMIT],
+            }
+        ],
+    }
+    return _apply_identity(payload, username, avatar_url)
+
+
+def build_day_end(
+    *,
+    date_label: str,
+    polls: int,
+    expected: int,
+    failures: int = 0,
+    alerts: int = 0,
+    floor_percent: int = 75,
+    mention: str | None = None,
+    username: str | None = None,
+    avatar_url: str | None = None,
+) -> dict:
+    """Closing heartbeat: what the day actually cost, against what it was meant to.
+
+    Polls-versus-expected is the number that matters. A day of silence means "nothing
+    opened up" only if the bot was actually looking; 41 polls out of 160 means most of
+    the day went unwatched, and until this ping existed that was invisible.
+    """
+    percent = coverage_percent(polls, expected)
+    short = max(expected - polls, 0)
+    degraded = percent is not None and percent < floor_percent
+    mention = normalize_mention(mention) if degraded else None
+
+    if percent is None:
+        coverage = f"**{polls}** polls (no schedule configured, so nothing to compare against)."
+    elif short:
+        coverage = (
+            f"**{polls}** of **{expected}** scheduled polls ({percent}%) — "
+            f"**{short} short**."
+        )
+    else:
+        coverage = f"**{polls}** of **{expected}** scheduled polls ({percent}%) — on schedule."
+
+    lines = [coverage]
+
+    if failures:
+        lines.append(
+            f"Fetch failures: **{failures}** of those attempts could not read the page."
+        )
+    lines.append(
+        f"Alerts sent today: **{alerts}**."
+        + ("" if alerts else " (Expected on most days — matching slots are usually full.)")
+    )
+
+    if degraded:
+        lines.append(
+            "\n⚠️ **Most of the day went unwatched.** Scheduled jobs were dropped or "
+            "started late, so an opening could have come and gone unseen. Check the "
+            "Actions run history — a day this short is not a quiet day."
+        )
+
+    status = "⚠️ Polling closed short" if degraded else "🌙 Polling closed"
+    embed = {
+        "title": f"{status} — {date_label}",
+        "color": COLOR_HEALTH if degraded else COLOR_DAY,
+        "description": "\n".join(lines)[:DESCRIPTION_LIMIT],
+    }
+
+    summary = (
+        f"slotwatch only managed {percent}% of {date_label}'s polls"
+        if degraded
+        else f"slotwatch finished {date_label} — {polls}/{expected} polls, {alerts} alert(s)"
+    )
+    content = f"{mention} {summary}".strip() if mention else summary
+
+    payload: dict = {"embeds": [embed], "content": content[:CONTENT_LIMIT]}
     if mention:
         payload["allowed_mentions"] = {"parse": ["users"]}
     return _apply_identity(payload, username, avatar_url)

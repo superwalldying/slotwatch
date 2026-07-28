@@ -27,7 +27,9 @@ from pathlib import Path
 
 from .config import (
     Config,
+    day_is_over,
     describe_schedule,
+    expected_polls,
     interval_at,
     load_config,
     local_now,
@@ -35,13 +37,31 @@ from .config import (
 )
 from .diff import diff, suppress_recent
 from .fetch import FetchError, build_session, fetch_tab
-from .format import build_payload, build_test_ping, classify_mention
+from .format import (
+    build_day_end,
+    build_day_start,
+    build_payload,
+    build_test_ping,
+    classify_mention,
+)
 from .models import Event, EventType, ParseResult
 from .notify import NotifyError, send
 from .parse import parse_table
 from .rules import filter_events
 from .site import Site, SiteConfigError, load_site
-from .state import State, load, mark_notified, record, record_failure, save
+from .state import (
+    State,
+    clear_day,
+    close_day,
+    count_poll,
+    load,
+    mark_notified,
+    merge,
+    open_day,
+    record,
+    record_failure,
+    save,
+)
 
 log = logging.getLogger("slotwatch")
 
@@ -280,7 +300,151 @@ def _sleep_for(config: Config, interval: dt.timedelta) -> float:
     return interval.total_seconds() + random.uniform(0, config.poll.jitter_seconds)
 
 
+def _post(payload: dict, *, dry_run: bool, webhook_url: str | None, what: str) -> bool:
+    """Send one standalone payload. Returns whether state may record it as delivered."""
+    if dry_run:
+        log.info("dry-run: would post %s: %s", what, payload)
+        # Deliberately not treated as delivered, so repeated dry runs stay informative.
+        return False
+    try:
+        send(payload, webhook_url or "")
+    except NotifyError as exc:
+        log.error("could not post %s: %s", what, exc)
+        # Not recorded, so the next poll retries rather than losing the report.
+        return False
+    return True
+
+
+def _parse_day(day: str) -> dt.date | None:
+    try:
+        return dt.date.fromisoformat(day)
+    except ValueError:
+        return None
+
+
+def _day_label(day: str) -> str:
+    parsed = _parse_day(day)
+    return parsed.strftime("%a %d %b") if parsed else day
+
+
+def day_tick(
+    config: Config,
+    state: State,
+    *,
+    now: dt.datetime,
+    dry_run: bool = False,
+    webhook_url: str | None = None,
+    mention: str | None = None,
+) -> State:
+    """Open and close the polling day, pinging Discord at each edge.
+
+    Both edges are detected from the clock on an ordinary loop iteration rather than
+    scheduled separately, because a separate schedule would be one more thing that can
+    silently stop - the failure this project exists to make impossible.
+
+    The closing report is what makes the daily ping worth having: it carries the polls
+    actually made against `expected_polls`, so a day the scheduler mostly dropped reads
+    differently from a day when nothing opened up.
+    """
+    if not config.notify.daily_summary:
+        return state
+
+    today = local_now(config, now).date().isoformat()
+    day = state.day
+
+    # A tracked day that never got its closing report: this job's --max-runtime expired
+    # before the window shut, or Actions dropped every remaining run. Report it late
+    # rather than never - a missing report looks exactly like a dead bot.
+    if day.is_open and day.date != today:
+        log.info("closing %s late; its own job ended before the window did", day.date)
+        state = _close(config, state, dry_run=dry_run, webhook_url=webhook_url,
+                       mention=mention, clear=True)
+        if state.day.is_open:
+            # Discord rejected it. Leave the day open and retry on the next tick rather
+            # than opening today over the top of a report that was never delivered.
+            return state
+        day = state.day
+
+    if day.is_open and day.date == today and day_is_over(config, now):
+        state = _close(config, state, dry_run=dry_run, webhook_url=webhook_url,
+                       mention=mention, clear=False)
+        return state
+
+    # Opening edge: the first poll of a local day, inside a real window. `--ignore-window`
+    # deliberately does not open a day, so local testing never fakes a report.
+    if day.date != today and interval_at(config, now) is not None:
+        expected = expected_polls(config, local_now(config, now).date())
+        payload = build_day_start(
+            date_label=_day_label(today),
+            expected=expected,
+            schedule=describe_schedule(config),
+            username=config.notify.username,
+            avatar_url=config.notify.avatar_url,
+        )
+        log.info("polling day %s opened; %d polls scheduled", today, expected)
+        if _post(payload, dry_run=dry_run, webhook_url=webhook_url, what="day-start"):
+            state = open_day(state, today)
+
+    return state
+
+
+def _close(
+    config: Config,
+    state: State,
+    *,
+    dry_run: bool,
+    webhook_url: str | None,
+    mention: str | None,
+    clear: bool,
+) -> State:
+    day = state.day
+    # A hand-edited or truncated date must not take the poller down with it: report the
+    # count without a target rather than crashing the run that was about to poll.
+    parsed = _parse_day(day.date or "")
+    expected = expected_polls(config, parsed) if parsed else 0
+    payload = build_day_end(
+        date_label=_day_label(day.date),
+        polls=day.polls,
+        expected=expected,
+        failures=day.failures,
+        alerts=day.alerts,
+        floor_percent=config.notify.coverage_floor_percent,
+        mention=mention,
+        username=config.notify.username,
+        avatar_url=config.notify.avatar_url,
+    )
+    log.info(
+        "polling day %s closed: %d/%d polls, %d fetch failure(s), %d alert(s)",
+        day.date, day.polls, expected, day.failures, day.alerts,
+    )
+    if not _post(payload, dry_run=dry_run, webhook_url=webhook_url, what="day-end"):
+        return state
+    return clear_day(state) if clear else close_day(state)
+
+
+def run_merge_state(state_path: Path, other: Path) -> int:
+    """Fold a concurrently-pushed state file into ours, in place.
+
+    Exists for the CI persist step: two runs that both wrote state/seen.json cannot be
+    reconciled by git (see state.merge), but they reconcile trivially here. Needs
+    neither a site profile nor a webhook, so it stays usable on the failure paths.
+    """
+    if not other.exists():
+        log.info("nothing to merge: %s does not exist", other)
+        return 0
+    merged = merge(load(state_path), load(other))
+    save(state_path, merged)
+    log.info(
+        "merged %s into %s: %d slot(s), %d notified marker(s)",
+        other, state_path, len(merged.slots), len(merged.notified),
+    )
+    return 0
+
+
 def run(args: argparse.Namespace) -> int:
+    if args.merge_state:
+        return run_merge_state(args.state, Path(args.merge_state))
+
     try:
         site = load_site(args.site)
     except SiteConfigError as exc:
@@ -322,6 +486,17 @@ def run(args: argparse.Namespace) -> int:
             now = dt.datetime.now(dt.UTC)
             interval = interval_at(config, now)
 
+            # Before the window check, so the closing report still goes out on the
+            # iteration that discovers the day has ended - including the one that then
+            # exits because nothing more opens before this job's budget runs out.
+            before = state
+            state = day_tick(
+                config, state, now=now, dry_run=args.dry_run,
+                webhook_url=webhook_url, mention=mention,
+            )
+            if state is not before:
+                save(args.state, state)
+
             if interval is None and not args.ignore_window:
                 if args.once:
                     log.info("outside the polling window; nothing to do")
@@ -342,11 +517,19 @@ def run(args: argparse.Namespace) -> int:
                 time.sleep(min(wait, (deadline - now).total_seconds()))
                 continue
 
+            streak_before = state.failure_streak
             state, sent = poll_once(
                 config, state, site, now=now, session=session, fixture=fixture,
                 dry_run=args.dry_run, webhook_url=webhook_url, mention=mention,
             )
             total += len(sent)
+            # Attempted, not succeeded: a poll that could not reach the site still used
+            # up one of the day's slots, and the report should say so.
+            state = count_poll(
+                state,
+                failed=state.failure_streak > streak_before,
+                alerts=len(sent),
+            )
             save(args.state, state)
 
             if args.once:
@@ -395,6 +578,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--ignore-window", action="store_true",
         help="poll regardless of the configured time windows",
+    )
+    parser.add_argument(
+        "--merge-state", metavar="OTHER",
+        help="fold another state file into --state and exit; used by CI to reconcile "
+             "two runs that both wrote state, which git cannot merge",
     )
     parser.add_argument("--verbose", action="store_true")
     return parser

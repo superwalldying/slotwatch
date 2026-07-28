@@ -40,6 +40,46 @@ a fetch failure or parser anomaly so drift turns the build red too.
 Deliberately *not* alerts: a slot selling out, a slot ageing off the rolling window, or
 the spaces-left count ticking down.
 
+## The daily heartbeat
+
+Two more messages a day, at the edges of the polling window. Neither mentions you — a
+phone buzzing twice daily for routine news gets the channel muted, and a muted channel is
+how the real alert gets missed.
+
+```
+🟢 Polling opened — Mon 27 Jul
+Watching for the rest of the day — 160 polls scheduled.
+Schedule: Mon-Thu 09:00-17:00 every 3 min · Fri 09:00-17:00 every 3 min (2 min 12:00-15:00)
+```
+
+The closing one is the one that earns its place. It reports polls **made** against polls
+**scheduled**:
+
+```
+🌙 Polling closed — Tue 28 Jul
+158 of 160 scheduled polls (99%) — 2 short.
+Fetch failures: 2 of those attempts could not read the page.
+Alerts sent today: 1.
+```
+
+Without that ratio, a silent day is ambiguous — "nothing opened up" and "the watcher was
+barely running" look identical, and the second is the failure this whole project is built
+around. So a day that lands under `coverage_floor_percent` (default 75) is the one daily
+message that *does* mention you:
+
+```
+⚠️ Polling closed short — Mon 27 Jul
+55 of 160 scheduled polls (34%) — 105 short.
+⚠️ Most of the day went unwatched. Scheduled jobs were dropped or started late, so an
+opening could have come and gone unseen. A day this short is not a quiet day.
+```
+
+Both edges are detected from the clock during an ordinary poll rather than scheduled
+separately, since a separate schedule is one more thing that can silently stop. If a job
+hits `--max-runtime` before the window shuts, the closing report goes out late — on the
+next day's first poll — rather than not at all. Set `daily_summary: false` to switch the
+pair off.
+
 ## Configuration
 
 Two files, with a firm split:
@@ -97,6 +137,10 @@ python -m slotwatch.main --test-ping --dry-run
 
 # What CI runs
 python -m slotwatch.main --loop --max-runtime 115
+
+# Reconcile two runs that both wrote state (what CI's persist step calls on a
+# rejected push). Needs neither a site profile nor a webhook.
+python -m slotwatch.main --state state/seen.json --merge-state other.json
 ```
 
 `--dry-run` still writes state (so seeding works) but never posts and never marks events
@@ -121,11 +165,31 @@ than a person casually browsing.
 
 Two scheduling facts worth knowing:
 
-- **Cron does not set the cadence.** Actions schedules drift 5–15 minutes and get dropped
-  under load, so each job paces *itself* (`--loop`) and cron merely starts it.
+- **Cron does not set the cadence.** Actions schedules drift and get dropped under load,
+  so each job paces *itself* (`--loop`) and cron merely starts it. Drift observed in
+  practice has been far worse than the 5–15 minutes usually quoted — over an hour on some
+  starts — which is exactly why the daily report counts polls rather than assuming them.
 - **The window is enforced in Python, not cron.** Cron is UTC-only; a fixed UTC window
   would slide an hour every November. `config.interval_at` uses real `zoneinfo` rules and
-  is unit-tested across a DST boundary.
+  is unit-tested across a DST boundary, as is `config.expected_polls` — the day's target
+  is 8 local hours in both DST states, not a fixed number of UTC hours.
+
+### Why CI merges state in Python
+
+Both scheduled workflows commit `state/seen.json` back to the branch, and two runs can
+end up writing it at once. Git cannot reconcile that file: runs that each create it
+conflict `add/add`, a line-wise merge of a JSON object means nothing, and taking one side
+wholesale drops either a sighting (inventing a "new slot" later) or a notified-marker
+(re-pinging a slot you were already told about). `state.merge` computes the union
+instead — newer sightings win, notified-markers are unioned with the later timestamp —
+and CI calls it through `--merge-state`, then commits the result as an ordinary
+fast-forward.
+
+The overlap that made this necessary is worth naming: `actions/checkout` defaults to
+`github.sha`, which a *scheduled* run pins when the run is **created**. A run queued
+behind the `concurrency: poll` lock starts with a SHA that is minutes or hours stale, so
+the default checkout silently misses state a previous run already pushed. Both workflows
+check out `github.ref_name` instead.
 
 ## How the data is read
 
@@ -164,7 +228,7 @@ Pure core, I/O only at the edges.
 | [rules.py](src/slotwatch/rules.py) | Slot ↔ `WatchRule` matching. Pure |
 | [format.py](src/slotwatch/format.py) | Events → one batched Discord embed. Pure |
 | [config.py](src/slotwatch/config.py) | `rules.yaml` + DST-safe window gating. Pure |
-| [state.py](src/slotwatch/state.py) | Durable memory across runs |
+| [state.py](src/slotwatch/state.py) | Durable memory across runs, the daily tally, and the concurrent-write merge |
 | [main.py](src/slotwatch/main.py) | Wiring, CLI, self-pacing loop |
 
 Rules are *data*, not code, which is what lets a later phase add slash commands (Discord
@@ -194,6 +258,10 @@ Behaviours worth knowing are locked in by tests:
   forgotten.
 - **Batching** — six simultaneous openings are one message, not six buzzes.
 - **Cooldown** — a slot flapping full ↔ open cannot ping every 3 minutes.
+- **A merge never drops a notified-marker**, since a lost marker re-pings a slot you
+  were already told about — the property that rules out "just take one side".
+- **An undelivered daily report stays pending**, and is never overwritten by the next
+  day opening on top of it.
 
 ## Known limits
 
@@ -204,3 +272,7 @@ Behaviours worth knowing are locked in by tests:
 - The rolling window means dates silently disappear off the back; expected, never alerted.
 - Obscuring the target reduces casual discoverability — it is not anonymity. Anyone who
   runs the bot, reads the secret, or inspects outbound traffic learns the target.
+- The daily report can only be sent by a job that runs. A day on which Actions dropped
+  *every* scheduled start produces no report at all until the next run picks it up —
+  the weekly [heartbeat](.github/workflows/heartbeat.yml) commit is the backstop for
+  that, not the daily ping.

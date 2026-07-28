@@ -9,6 +9,8 @@ from decimal import Decimal
 import pytest
 
 from slotwatch.format import (
+    COLOR_DAY,
+    COLOR_HEALTH,
     COLOR_TEST,
     COLOR_TEST_FAIL,
     CONTENT_LIMIT,
@@ -16,9 +18,12 @@ from slotwatch.format import (
     MAX_EMBEDS,
     TOTAL_LIMIT,
     USERNAME_LIMIT,
+    build_day_end,
+    build_day_start,
     build_payload,
     build_test_ping,
     classify_mention,
+    coverage_percent,
     normalize_mention,
     payload_size,
 )
@@ -491,3 +496,135 @@ def test_classify_mention_describes_the_shape_only(raw, shape):
 def test_classify_never_leaks_the_id():
     """Actions logs are public on a public repo."""
     assert "119290074629275652" not in classify_mention("119290074629275652")
+
+
+# --------------------------------------------------------------------------
+# Daily heartbeat
+#
+# The closing report's whole job is to make "nothing opened up" distinguishable from
+# "the watcher was barely running", so the polls-versus-expected number is the part
+# these tests guard hardest.
+# --------------------------------------------------------------------------
+
+
+def test_coverage_percent_of_a_full_day():
+    assert coverage_percent(160, 160) == 100
+
+
+def test_coverage_percent_without_a_schedule_is_unknowable():
+    assert coverage_percent(3, 0) is None
+
+
+def test_day_start_says_how_many_polls_are_planned():
+    payload = build_day_start(
+        date_label="Mon 27 Jul", expected=160, schedule="Mon-Fri 09:00-17:00 every 3 min"
+    )
+    body = payload["embeds"][0]["description"]
+
+    assert "160" in body
+    assert "09:00-17:00" in body
+
+
+def test_day_start_never_mentions_you():
+    """Fires every polling day. A twice-daily buzz gets the channel muted."""
+    payload = build_day_start(date_label="Mon 27 Jul", expected=160)
+
+    assert "allowed_mentions" not in payload
+    assert "<@" not in payload["content"]
+
+
+def test_day_start_is_visually_quieter_than_an_alert():
+    payload = build_day_start(date_label="Mon 27 Jul", expected=160)
+
+    assert payload["embeds"][0]["color"] == COLOR_DAY
+
+
+def test_day_end_reports_polls_against_the_schedule():
+    payload = build_day_end(
+        date_label="Mon 27 Jul", polls=160, expected=160, alerts=0
+    )
+    body = payload["embeds"][0]["description"]
+
+    assert "160" in body
+    assert "on schedule" in body
+
+
+def test_day_end_names_the_shortfall():
+    """The number the user actually asked for: made versus should-have-been."""
+    payload = build_day_end(date_label="Mon 27 Jul", polls=41, expected=160)
+    body = payload["embeds"][0]["description"]
+
+    assert "41" in body and "160" in body
+    assert "26%" in body
+    assert "119 short" in body
+
+
+def test_day_end_escalates_a_badly_short_day_to_a_mention():
+    """A day this thin proves nothing, so silence must not be allowed to look like news."""
+    payload = build_day_end(
+        date_label="Mon 27 Jul", polls=41, expected=160, mention="<@42>"
+    )
+
+    assert payload["allowed_mentions"] == {"parse": ["users"]}
+    assert "<@42>" in payload["content"]
+    assert payload["embeds"][0]["color"] == COLOR_HEALTH
+    assert "unwatched" in payload["embeds"][0]["description"]
+
+
+def test_day_end_stays_quiet_on_a_healthy_day():
+    payload = build_day_end(
+        date_label="Mon 27 Jul", polls=160, expected=160, mention="<@42>"
+    )
+
+    assert "allowed_mentions" not in payload
+    assert "<@42>" not in payload["content"]
+    assert payload["embeds"][0]["color"] == COLOR_DAY
+
+
+def test_day_end_respects_a_custom_coverage_floor():
+    args = dict(date_label="Mon 27 Jul", polls=144, expected=160, mention="<@42>")
+
+    assert "allowed_mentions" not in build_day_end(**args, floor_percent=75)
+    assert "allowed_mentions" in build_day_end(**args, floor_percent=95)
+
+
+def test_day_end_explains_a_zero_alert_day():
+    """Zero alerts is the normal outcome and must not read as a fault."""
+    body = build_day_end(
+        date_label="Mon 27 Jul", polls=160, expected=160, alerts=0
+    )["embeds"][0]["description"]
+
+    assert "Expected on most days" in body
+
+
+def test_day_end_reports_fetch_failures_separately():
+    """A poll that could not read the page still counts as attempted."""
+    body = build_day_end(
+        date_label="Mon 27 Jul", polls=160, expected=160, failures=7
+    )["embeds"][0]["description"]
+
+    assert "7" in body and "Fetch failures" in body
+
+
+def test_day_end_without_a_schedule_does_not_invent_a_percentage():
+    payload = build_day_end(date_label="Sat 01 Aug", polls=3, expected=0, mention="<@42>")
+
+    assert "%" not in payload["embeds"][0]["description"]
+    assert "allowed_mentions" not in payload
+
+
+def test_day_end_cannot_report_negative_shortfall():
+    """Jitter and clock drift can overshoot the plan; that is not a deficit."""
+    body = build_day_end(
+        date_label="Mon 27 Jul", polls=165, expected=160
+    )["embeds"][0]["description"]
+
+    assert "short" not in body
+
+
+def test_daily_pings_carry_the_configured_display_name():
+    for payload in (
+        build_day_start(date_label="Mon 27 Jul", expected=160, username="slotwatch"),
+        build_day_end(date_label="Mon 27 Jul", polls=1, expected=1, username="slotwatch"),
+    ):
+        assert payload["username"] == "slotwatch"

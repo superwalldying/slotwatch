@@ -14,7 +14,9 @@ import pytest
 
 from slotwatch.config import (
     DEFAULT_INTERVAL,
+    day_is_over,
     describe_schedule,
+    expected_polls,
     interval_at,
     load_config,
     local_now,
@@ -307,3 +309,91 @@ def test_shipped_rules_yaml_is_quiet_at_the_weekend():
     assert interval_at(shipped, utc(2026, 8, 1, 16)) is None  # Sat 12:00 EDT
     assert interval_at(shipped, utc(2026, 8, 2, 16)) is None  # Sun 12:00 EDT
     assert interval_at(shipped, utc(2026, 7, 31, 17)) == dt.timedelta(minutes=2)  # Fri 13:00
+
+
+# --------------------------------------------------------------------------
+# Expected poll count — the yardstick the end-of-day report is measured against
+# --------------------------------------------------------------------------
+
+
+def test_expected_polls_counts_a_plain_window(config):
+    """Mon 09:00-17:00 every 3 min = 8h / 3 min."""
+    assert expected_polls(config, dt.date(2026, 7, 27)) == 160
+
+
+def test_expected_polls_accounts_for_the_dense_friday_stretch(config):
+    """Fri is 3 min outside 12:00-15:00 and 2 min inside, so it beats a plain day."""
+    friday = expected_polls(config, dt.date(2026, 7, 31))
+
+    # 09:00-12:00 at 3 min = 60, 12:00-15:00 at 2 min = 90, 15:00-17:00 at 3 min = 40.
+    assert friday == 190
+    assert friday > expected_polls(config, dt.date(2026, 7, 27))
+
+
+def test_expected_polls_is_zero_on_an_unwatched_day(config):
+    """A day with no window has nothing to fall short of."""
+    # config's YAML covers sat/sun, so use the shipped weekday-only rules.
+    shipped = load_config(Path(__file__).resolve().parents[1] / "rules.yaml")
+
+    assert expected_polls(shipped, dt.date(2026, 8, 1)) == 0  # Saturday
+
+
+def test_expected_polls_counts_local_hours_not_utc_hours(config):
+    """The window is 8 local hours in both DST states, so the count must not move.
+
+    A UTC-based count would silently gain or lose an hour's polls every November.
+    """
+    summer = expected_polls(config, dt.date(2026, 7, 27))  # EDT
+    winter = expected_polls(config, dt.date(2026, 12, 7))  # EST, also a Monday
+
+    assert summer == winter == 160
+
+
+def test_expected_polls_without_windows_is_zero(tmp_path):
+    path = tmp_path / "rules.yaml"
+    path.write_text("poll:\n  tabs: [primary]\nrules: []\n", encoding="utf-8")
+
+    assert expected_polls(load_config(path), dt.date(2026, 7, 27)) == 0
+
+
+def test_a_zero_interval_cannot_hang_the_count(tmp_path):
+    """Nonsense config must produce a visibly wrong number, never an infinite loop."""
+    path = tmp_path / "rules.yaml"
+    path.write_text(
+        "poll:\n"
+        "  tabs: [primary]\n"
+        "  windows:\n"
+        "    - days: [mon]\n"
+        "      start: '09:00'\n"
+        "      end: '17:00'\n"
+        "      interval_minutes: 0\n"
+        "rules: []\n",
+        encoding="utf-8",
+    )
+
+    assert expected_polls(load_config(path), dt.date(2026, 7, 27)) == 1
+
+
+# --------------------------------------------------------------------------
+# End of the polling day
+# --------------------------------------------------------------------------
+
+
+def test_day_is_not_over_before_the_window_opens(config):
+    assert day_is_over(config, utc(2026, 7, 27, 12)) is False  # Mon 08:00 EDT
+
+
+def test_day_is_not_over_mid_window(config):
+    assert day_is_over(config, utc(2026, 7, 27, 18)) is False  # Mon 14:00 EDT
+
+
+def test_day_is_over_once_the_window_shuts(config):
+    assert day_is_over(config, utc(2026, 7, 27, 21, 1)) is True  # Mon 17:01 EDT
+
+
+def test_day_is_over_is_distinct_from_being_outside_a_window(config):
+    """08:00 is outside the window but the day has not happened yet."""
+    morning = utc(2026, 7, 27, 12)  # Mon 08:00 EDT
+
+    assert interval_at(config, morning) is None
+    assert day_is_over(config, morning) is False

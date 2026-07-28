@@ -55,6 +55,16 @@ notify:
   username: slotwatch
   # avatar_url: "https://example.com/icon.png"   # optional
 
+  # One ping as the polling day opens, one as it closes. Neither mentions you: a phone
+  # buzzing twice a day for routine news gets the channel muted, and a muted channel is
+  # how the real alert gets missed. The closing ping reports polls made against polls
+  # scheduled, which is the only thing that distinguishes "nothing opened up today"
+  # from "the watcher was barely running today".
+  daily_summary: true
+  # ...with one exception. A day that lands under this share of its scheduled polls
+  # *does* mention you, because that is a day where silence proves nothing.
+  coverage_floor_percent: 75
+
 # Rules scope by `tab:` rather than by venue name. The venue strings differ in
 # formatting between tabs, so matching them is a silent-failure trap.
 rules:
