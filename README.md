@@ -37,8 +37,20 @@ Polling: Mon-Thu 09:00-17:00 every 3 min · Fri 09:00-17:00 every 3 min (2 min 1
 Run it yourself with `--test-ping`. It never reads or writes state, and exits non-zero on
 a fetch failure or parser anomaly so drift turns the build red too.
 
-Deliberately *not* alerts: a slot selling out, a slot ageing off the rolling window, or
-the spaces-left count ticking down.
+Deliberately *not* alerts: a slot selling out, a slot ageing off the rolling window, the
+spaces-left count ticking down, or **a session that has already finished**.
+
+That last one needs saying, because the page keeps same-day rows listed — the live
+capture carries six rows dated its own capture day. A cancellation can therefore free a
+spot in a block that is already over, and a ping you cannot act on is how you learn to
+ignore the ones you can. Suppression is measured against the session's **end**, not its
+start: a spot freed thirty minutes into a three-hour block is still worth taking.
+
+It fails open in every direction. No local clock, an unreadable date, an unreadable time
+— each of those alerts anyway, because staying quiet is the failure this project exists
+to prevent. The bot goes silent only when it is certain the session is done. An
+unreadable time is also flagged as a parser anomaly, so drift that disables expiry
+surfaces through `health` rather than quietly widening what gets announced.
 
 ## The daily heartbeat
 
@@ -157,7 +169,9 @@ what makes a Mon–Fri schedule defensible.
 
 The trade it accepts: a spot freed on Saturday or Sunday morning goes unnoticed until
 Monday, by which point a weekend session has already happened. Add `sat`/`sun` to the
-windows in `rules.yaml` if you'd rather cover that.
+windows in `rules.yaml` if you'd rather cover that — sessions that have already finished
+are suppressed on their own merits, so weekend polling will not start announcing blocks
+that are already over.
 
 That is ~160 requests/day, roughly 6.4 MB — about what a dozen human page views cost,
 since one full page load pulls ~500 KB of assets. A request every 3 minutes is slower
@@ -260,6 +274,11 @@ Behaviours worth knowing are locked in by tests:
 - **Cooldown** — a slot flapping full ↔ open cannot ping every 3 minutes.
 - **A merge never drops a notified-marker**, since a lost marker re-pings a slot you
   were already told about — the property that rules out "just take one side".
+- **Expiry fails open** — no clock, no date or no readable time each still alert. The
+  fail-open cases are the load-bearing half of that feature, not the happy path.
+- **A finished session is still recorded in state.** Dropping it from the observation
+  would look like ageing off the rolling window, and its return would then read as a
+  brand-new slot.
 - **An undelivered daily report stays pending**, and is never overwritten by the next
   day opening on top of it.
 
