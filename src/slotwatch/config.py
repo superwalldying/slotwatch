@@ -78,6 +78,13 @@ class NotifyConfig:
     # the webhook happened to be created as.
     username: str | None = None
     avatar_url: str | None = None
+    # One ping as the polling day opens, one as it closes. The closing ping carries the
+    # poll count against what the schedule called for, which is the only way a
+    # half-delivered day is distinguishable from a quiet one.
+    daily_summary: bool = True
+    # Coverage below this share of the expected polls escalates the closing ping to a
+    # mention. Routine days stay silent; a day the scheduler mostly dropped does not.
+    coverage_floor_percent: int = 75
 
 
 @dataclass(frozen=True)
@@ -153,6 +160,8 @@ def load_config(path: str | Path, *, known_tabs: set[str] | None = None) -> Conf
         mention_env=(str(notify_raw["mention_env"]) if notify_raw.get("mention_env") else None),
         username=(str(notify_raw["username"]) if notify_raw.get("username") else None),
         avatar_url=(str(notify_raw["avatar_url"]) if notify_raw.get("avatar_url") else None),
+        daily_summary=bool(notify_raw.get("daily_summary", True)),
+        coverage_floor_percent=int(notify_raw.get("coverage_floor_percent", 75)),
     )
 
     return Config(poll=poll, notify=notify, rules=rules_from_config(raw.get("rules")))
@@ -200,6 +209,51 @@ def next_open(
             return probe
         probe += step
     return None
+
+
+def windows_on(config: Config, day: dt.date) -> tuple[Window, ...]:
+    return tuple(w for w in config.poll.windows if day.weekday() in w.days)
+
+
+def expected_polls(config: Config, day: dt.date) -> int:
+    """How many polls a perfectly-paced loop would make on `day`.
+
+    The yardstick the end-of-day report is measured against. Without it "41 polls" is
+    an unreadable number - the whole point is whether 41 was the plan.
+
+    Stepped in local wall-clock time, so a DST day counts what actually happens: adding
+    a timedelta to a zoned datetime advances the naive part, which is exactly the
+    "9am to 5pm local, whatever that costs in UTC" the windows describe.
+    """
+    if not config.poll.windows:
+        return 0
+
+    tz = ZoneInfo(config.poll.timezone)
+    total = 0
+    for window in windows_on(config, day):
+        moment = dt.datetime.combine(day, window.start, tzinfo=tz)
+        end = dt.datetime.combine(day, window.end, tzinfo=tz)
+        while moment < end:
+            total += 1
+            step = window.interval_for(moment)
+            if step <= dt.timedelta(0):
+                # A zero interval would spin forever. Config this broken deserves a
+                # visibly wrong number rather than a hung job.
+                break
+            moment += step
+    return total
+
+
+def day_is_over(config: Config, now: dt.datetime) -> bool:
+    """True once no further polling window opens on `now`'s local date.
+
+    Distinct from "outside a window": mid-morning on a Friday is outside no window,
+    but 17:01 is the end of the day and the moment the closing report is due.
+    """
+    if not config.poll.windows:
+        return False
+    moment = local_now(config, now)
+    return all(moment.time() >= w.end for w in windows_on(config, moment.date()))
 
 
 _DAY_ABBR = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")

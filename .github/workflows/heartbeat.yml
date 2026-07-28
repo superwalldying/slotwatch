@@ -25,18 +25,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Branch tip, not the SHA pinned when the run was created - this job shares
+          # the poller's concurrency lock and can sit behind a two-hour poll. See the
+          # longer note in poll.yml.
+          ref: ${{ github.ref_name }}
 
       - name: Touch heartbeat
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
-          date -u +"%Y-%m-%dT%H:%M:%SZ" > state/heartbeat.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state/heartbeat.txt
-          git commit -m "chore: heartbeat [skip ci]"
+
+          # No merge needed, unlike state/seen.json: this file is a single timestamp, so
+          # a rewind onto the remote tip and a fresh `date` is the whole reconciliation.
           for attempt in 1 2 3; do
-            if git push; then
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > state/heartbeat.txt
+            git add state/heartbeat.txt
+            git diff --cached --quiet || git commit -m "chore: heartbeat [skip ci]"
+            if git push origin "HEAD:${BRANCH}"; then
+              echo "heartbeat pushed on attempt ${attempt}"
               exit 0
             fi
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            echo "push rejected; rebuilding on the remote tip (attempt ${attempt})"
+            git fetch origin "${BRANCH}"
+            git reset --hard "origin/${BRANCH}"
           done
+
+          echo "could not push heartbeat after 3 attempts" >&2
           exit 1
