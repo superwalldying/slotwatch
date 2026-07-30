@@ -14,7 +14,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: poll # share the poller's lock; both write to state/
+  # Its own group, deliberately NOT the poller's. This used to share `poll` so the two
+  # could not both push to state/, but the poller now holds that lock for most of the
+  # working day - a shared group would leave Monday's heartbeat pending until an incoming
+  # poll run cancelled it, and the whole point of this workflow is to guarantee the
+  # repository sees activity. Push races are handled properly now: the retry loop below
+  # rebuilds on the remote tip rather than rebasing, and the two workflows touch
+  # different files (heartbeat.txt vs seen.json).
+  group: heartbeat
   cancel-in-progress: false
 
 permissions:

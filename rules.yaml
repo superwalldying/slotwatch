@@ -27,14 +27,16 @@ poll:
   # Saturday or Sunday morning will not be noticed until Monday - by which point a
   # weekend session has already happened. Add `sat`/`sun` days below if you'd rather
   # catch those too.
+  # Opens at 10:00 rather than 09:00: the first hour bought little, and a narrower window
+  # is cheaper to cover completely than a wider one covered half the time.
   windows:
     - days: [mon, tue, wed, thu]
-      start: "09:00"
+      start: "10:00"
       end: "17:00"
       interval_minutes: 3
 
     - days: [fri]
-      start: "09:00"
+      start: "10:00"
       end: "17:00"
       interval_minutes: 3
       # The refund cutoff itself: cancellations cluster right before it.
