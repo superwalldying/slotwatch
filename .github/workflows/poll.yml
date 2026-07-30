@@ -1,30 +1,45 @@
 name: Poll booking slots
 
-# Cron only *starts* these jobs; it does not set the polling cadence. GitHub's
-# scheduled workflows are throttled, drift 5-15 minutes routinely, and get dropped
-# under load, so a "*/3" schedule would yield erratic 10-20 minute resolution. Each
-# job instead paces itself internally (see --loop), turning unreliable scheduling into
-# a reliable 3-minute cadence.
+# Cron only *offers* these jobs; it does not set the polling cadence, and it cannot be
+# trusted to set the start time either. Each job paces itself internally (--loop), which
+# is what turns unreliable scheduling into a reliable 3-minute cadence.
 #
-# The five UTC start times below span the 9am-5pm Eastern window in BOTH DST states
-# (13:00-21:00 UTC in EDT, 14:00-22:00 UTC in EST). The real boundary is enforced in
-# Python via zoneinfo, so nothing silently shifts in November - see config.interval_at.
+# How late is "late"? Measured over ten consecutive real starts on this repo, GitHub's
+# scheduled-event dispatcher ran 3h14m to 5h06m behind cron, never once under three
+# hours; the weekly heartbeat came in 6h05m late. None of that is queueing - every run
+# had run_started_at == created_at and picked up a runner in under ten seconds, so the
+# whole delay is GitHub declining to emit the event. Push-triggered workflows in this
+# same repo start in about three seconds.
 #
-# Wall clock is ~10h/day, which is free only because Actions minutes are unlimited on
-# public repositories. On a private repo, drop --loop and switch to a short "*/5" cron
-# instead (~960 min/month), accepting 10-20 minute latency from cron drift.
+# Five crons pinned near the window therefore covered only 37-50% of it: the first job
+# of the day did not arrive until early afternoon, and the last two landed after the
+# window had shut and no-oped. So instead: offer a job every hour across the entire band
+# in which a 3-6 hour delay can still land usefully. Whichever arrives first starts the
+# chain, `concurrency: poll` serialises the rest into a back-to-back handover, and any
+# that arrive outside the window cost about twenty seconds each.
+#
+# Simulated against the measured delay, this holds 100% coverage in both DST states, and
+# still returns 85%+ if the delay were to double. Raising --max-runtime alone would have
+# moved coverage 44% -> 49%: spreading the crons is the part that matters, and the longer
+# budget only closes the worst case.
+#
+# Wall clock is ~7-11h/day, free only because Actions minutes are unlimited on public
+# repositories. On a private repo, drop --loop for a short "*/5" cron (~960 min/month)
+# and accept the latency.
 
 on:
   schedule:
-    # Weekdays only (1-5 = Mon-Fri), matching the windows in rules.yaml. The Python
-    # window gate is still the authority; these just avoid starting jobs that would
-    # immediately find nothing to do. Note cron's day-of-week is evaluated in UTC, so a
-    # job started late Friday UTC is still Friday in Eastern time.
-    - cron: "55 12 * * 1-5"
-    - cron: "55 14 * * 1-5"
-    - cron: "55 16 * * 1-5"
-    - cron: "55 18 * * 1-5"
-    - cron: "55 20 * * 1-5"
+    # Hourly 05:07-19:07 UTC, weekdays only (1-5 = Mon-Fri). The band covers the
+    # 10:00-17:00 Eastern window in BOTH DST states (14:00-21:00 UTC under EDT,
+    # 15:00-22:00 under EST); the real boundary is enforced in Python via zoneinfo, so
+    # nothing silently shifts in November - see config.interval_at.
+    #
+    # Minute :07 rather than :00 or :55 because GitHub's own guidance is that the
+    # scheduling queue is deepest at round times.
+    #
+    # Note cron's day-of-week is evaluated in UTC, so a job offered late Friday UTC is
+    # still Friday in Eastern time.
+    - cron: "7 5-19 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -48,7 +63,7 @@ permissions:
 jobs:
   poll:
     runs-on: ubuntu-latest
-    timeout-minutes: 135 # just above --max-runtime so a wedged job can't run away
+    timeout-minutes: 345 # just above --max-runtime so a wedged job can't run away
 
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +91,10 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_MENTION: ${{ secrets.DISCORD_MENTION }}
         run: |
-          python -m slotwatch.main --loop --max-runtime 115 \
+          # 330 min, against a 7h window: two jobs chained cover the day with slack, and
+          # a job that arrives before the window opens can wait it out rather than
+          # exiting - see the sleep-until-next_open path in main.run.
+          python -m slotwatch.main --loop --max-runtime 330 \
             ${{ inputs.dry_run && '--dry-run' || '' }} \
             ${{ inputs.ignore_window && '--ignore-window' || '' }}
 

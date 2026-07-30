@@ -397,3 +397,31 @@ def test_day_is_over_is_distinct_from_being_outside_a_window(config):
 
     assert interval_at(config, morning) is None
     assert day_is_over(config, morning) is False
+
+
+# --------------------------------------------------------------------------
+# The shipped schedule, which the daily coverage report is measured against
+# --------------------------------------------------------------------------
+
+
+def shipped():
+    return load_config(Path(__file__).resolve().parents[1] / "rules.yaml")
+
+
+def test_shipped_window_opens_at_ten():
+    """Pins the narrowed window. The cron band in poll.yml is chosen around it, so a
+    change here without a matching change there quietly loses coverage."""
+    assert {w.start for w in shipped().poll.windows} == {dt.time(10, 0)}
+    assert {w.end for w in shipped().poll.windows} == {dt.time(17, 0)}
+
+
+def test_shipped_half_nine_is_no_longer_watched():
+    assert interval_at(shipped(), utc(2026, 7, 27, 13, 30)) is None  # Mon 09:30 EDT
+    assert interval_at(shipped(), utc(2026, 7, 27, 14, 0)) is not None  # Mon 10:00 EDT
+
+
+def test_shipped_daily_poll_targets():
+    """The denominator in every end-of-day report. 7h at 3 min, and Friday's dense
+    12:00-15:00 stretch buying 30 extra polls."""
+    assert expected_polls(shipped(), dt.date(2026, 7, 27)) == 140  # Mon
+    assert expected_polls(shipped(), dt.date(2026, 7, 31)) == 170  # Fri

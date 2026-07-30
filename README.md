@@ -31,7 +31,7 @@ Read 24 slot(s) from <tab> — 7 bookable, 17 full.
 Matching your rules right now: 1 bookable slot(s).
 Parser anomalies: none.
 Active rules: Court 1, late block · Any Intermediate opening
-Polling: Mon-Thu 09:00-17:00 every 3 min · Fri 09:00-17:00 every 3 min (2 min 12:00-15:00)
+Polling: Mon-Thu 10:00-17:00 every 3 min · Fri 10:00-17:00 every 3 min (2 min 12:00-15:00)
 ```
 
 Run it yourself with `--test-ping`. It never reads or writes state, and exits non-zero on
@@ -60,8 +60,8 @@ how the real alert gets missed.
 
 ```
 🟢 Polling opened — Mon 27 Jul
-Watching for the rest of the day — 160 polls scheduled.
-Schedule: Mon-Thu 09:00-17:00 every 3 min · Fri 09:00-17:00 every 3 min (2 min 12:00-15:00)
+Watching for the rest of the day — 140 polls scheduled.
+Schedule: Mon-Thu 10:00-17:00 every 3 min · Fri 10:00-17:00 every 3 min (2 min 12:00-15:00)
 ```
 
 The closing one is the one that earns its place. It reports polls **made** against polls
@@ -69,7 +69,7 @@ The closing one is the one that earns its place. It reports polls **made** again
 
 ```
 🌙 Polling closed — Tue 28 Jul
-158 of 160 scheduled polls (99%) — 2 short.
+138 of 140 scheduled polls (99%) — 2 short.
 Fetch failures: 2 of those attempts could not read the page.
 Alerts sent today: 1.
 ```
@@ -81,7 +81,7 @@ message that *does* mention you:
 
 ```
 ⚠️ Polling closed short — Mon 27 Jul
-55 of 160 scheduled polls (34%) — 105 short.
+48 of 140 scheduled polls (34%) — 92 short.
 ⚠️ Most of the day went unwatched. Scheduled jobs were dropped or started late, so an
 opening could have come and gone unseen. A day this short is not a quiet day.
 ```
@@ -108,8 +108,8 @@ cp site.example.yaml site.yaml   # then fill in the real values
 In CI, the same YAML is supplied through the `SITE_PROFILE` secret instead of a file, so
 no workflow step ever writes target details into the tree.
 
-`rules.yaml` intentionally omits venue names: a single tab is polled, so a `gym` filter
-would be redundant anyway, and naming venues in a committed file would defeat the point.
+`rules.yaml` intentionally omits venue names: rules scope by `tab:` instead, and naming
+venues in a committed file would defeat the point of keeping the target out of the repo.
 
 ## Setup
 
@@ -124,7 +124,7 @@ would be redundant anyway, and naming venues in a committed file would defeat th
    pays for the self-pacing poller. Secrets stay secret on public repos, and nothing
    identifying lives in the tree. To stay private instead, see the note in
    [poll.yml](.github/workflows/poll.yml) — drop `--loop` for a `*/5` cron and accept
-   10–20 minute latency.
+   the latency, which on the evidence below is hours rather than minutes.
 4. **Edit [rules.yaml](rules.yaml)** to change what pings you. GitHub's web/mobile editor
    is fine for this.
 
@@ -132,7 +132,7 @@ would be redundant anyway, and naming venues in a committed file would defeat th
 
 ```bash
 python -m venv .venv && .venv/Scripts/python -m pip install -e ".[dev]"   # Windows
-pytest -q        # 175 tests, fully offline, no site profile needed
+pytest -q        # 315 tests, fully offline, no site profile needed
 pytest -m live   # opt-in canary; hits the real site once, skips without a profile
 ```
 
@@ -148,7 +148,7 @@ python -m slotwatch.main --once --dry-run --ignore-window \
 python -m slotwatch.main --test-ping --dry-run
 
 # What CI runs
-python -m slotwatch.main --loop --max-runtime 115
+python -m slotwatch.main --loop --max-runtime 330
 
 # Reconcile two runs that both wrote state (what CI's persist step calls on a
 # rejected push). Needs neither a site profile nor a webhook.
@@ -162,10 +162,15 @@ Exit codes: `0` success · `2` no webhook configured · `3` no site profile foun
 
 ## Polling schedule
 
-**Weekdays only**, 3-minute cadence inside 09:00–17:00 America/New_York, tightening to
+**Weekdays only**, 3-minute cadence inside 10:00–17:00 America/New_York, tightening to
 2 minutes on Fridays 12:00–15:00 — the target's refund rules require weekend cancellations
 by mid-afternoon Friday, so freed weekend spots cluster just before that cutoff, which is
 what makes a Mon–Fri schedule defensible.
+
+That is 140 polls on a normal weekday and 170 on a Friday. The window opens at 10:00
+rather than 09:00 because the first hour bought little, and a narrower window covered
+completely beats a wider one covered half the time — see below for why that was the
+choice on offer.
 
 The trade it accepts: a spot freed on Saturday or Sunday morning goes unnoticed until
 Monday, by which point a weekend session has already happened. Add `sat`/`sun` to the
@@ -173,20 +178,60 @@ windows in `rules.yaml` if you'd rather cover that — sessions that have alread
 are suppressed on their own merits, so weekend polling will not start announcing blocks
 that are already over.
 
-That is ~160 requests/day, roughly 6.4 MB — about what a dozen human page views cost,
-since one full page load pulls ~500 KB of assets. A request every 3 minutes is slower
-than a person casually browsing.
+Each poll fetches every configured tab, so with the two tabs in `rules.yaml` that is
+**~290 requests/day, roughly 12 MB** — a couple of dozen human page views, since one full
+page load pulls ~500 KB of assets. One request per tab every 3 minutes is slower than a
+person casually browsing.
 
 Two scheduling facts worth knowing:
 
-- **Cron does not set the cadence.** Actions schedules drift and get dropped under load,
-  so each job paces *itself* (`--loop`) and cron merely starts it. Drift observed in
-  practice has been far worse than the 5–15 minutes usually quoted — over an hour on some
-  starts — which is exactly why the daily report counts polls rather than assuming them.
 - **The window is enforced in Python, not cron.** Cron is UTC-only; a fixed UTC window
   would slide an hour every November. `config.interval_at` uses real `zoneinfo` rules and
   is unit-tested across a DST boundary, as is `config.expected_polls` — the day's target
-  is 8 local hours in both DST states, not a fixed number of UTC hours.
+  is 7 local hours in both DST states, not a fixed number of UTC hours.
+- **Cron sets neither the cadence nor the start time.** This turned out to matter far more
+  than expected, and is worth its own section.
+
+### Cron is later than you think
+
+Measured over ten consecutive real starts on this repo, GitHub's scheduled-event
+dispatcher ran **3h14m to 5h06m behind cron, never once under three hours**. The weekly
+heartbeat came in 6h05m late. The commonly quoted "5–15 minutes of drift" is off by an
+order of magnitude here.
+
+None of it is queueing. Every run had `run_started_at == created_at` and picked up a
+runner in under ten seconds — identical to push-triggered workflows in the same repo,
+which start in about three seconds. The entire delay is GitHub declining to emit the
+event; the run does not exist yet, so there is nothing to inspect. `schedule` is
+documented as best-effort, is the lowest-priority event type, and runs may be dropped
+outright.
+
+The original schedule pinned five crons near the window and consequently covered **37–50%
+of it**: the first job of the day never arrived before early afternoon, and the last two
+landed after the window shut and no-oped. The morning was structurally unreachable no
+matter how well the poller behaved.
+
+The fix is to stop guessing when a job will arrive:
+
+- **Offer a job every hour** across the whole band in which a 3–6 hour delay can still
+  land usefully (`7 5-19 * * 1-5`). Whichever arrives first starts the chain,
+  `concurrency: poll` serialises the rest into a back-to-back handover, and arrivals
+  outside the window cost about twenty seconds each.
+- **A 330-minute `--max-runtime`**, so a job arriving before the window can wait it out
+  instead of exiting, and two chained jobs span the 7-hour window with slack.
+
+Simulated against the measured delay this holds 100% coverage in both DST states, and
+still returns 85%+ if the delay were to double. Worth knowing which half did the work:
+raising `--max-runtime` alone moves coverage 44% → 49%, because a longer job still cannot
+start before GitHub offers it one. **Spreading the crons is the fix; the longer budget
+only closes the worst case.**
+
+The narrower 10:00 window is part of the same trade — seven hours is cheaper to cover
+completely than eight covered partially.
+
+None of this is trusted blindly: the end-of-day report counts polls actually made against
+`expected_polls`, so if the delay changes character again you will be told rather than
+left guessing.
 
 ### Why CI merges state in Python
 
