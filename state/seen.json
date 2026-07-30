@@ -1,14 +1,15 @@
 {
   "day": {
-    "alerts": 0,
+    "alerts": 1,
     "date": "2026-07-30",
-    "ended": false,
+    "ended": true,
     "failures": 0,
-    "polls": 67,
+    "polls": 132,
     "started": true
   },
   "failure_streak": 0,
   "notified": {
+    "16212:reopened": "2026-07-30T18:54:27.046912+00:00",
     "16244:reopened": "2026-07-29T16:59:49.704611+00:00"
   },
   "seeded": true,
@@ -16,7 +17,7 @@
     "16209": "sold_out",
     "16210": "sold_out",
     "16211": "sold_out",
-    "16212": "sold_out",
+    "16212": "limited",
     "16213": "sold_out",
     "16224": "sold_out",
     "16225": "open",
