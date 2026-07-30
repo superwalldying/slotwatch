@@ -1,10 +1,10 @@
 {
   "day": {
-    "alerts": 1,
-    "date": "2026-07-29",
-    "ended": true,
+    "alerts": 0,
+    "date": "2026-07-30",
+    "ended": false,
     "failures": 0,
-    "polls": 79,
+    "polls": 67,
     "started": true
   },
   "failure_streak": 0,
@@ -26,7 +26,7 @@
     "16229": "sold_out",
     "16240": "sold_out",
     "16241": "open",
-    "16242": "limited",
+    "16242": "sold_out",
     "16243": "sold_out",
     "16244": "sold_out",
     "16245": "limited",
@@ -34,7 +34,7 @@
     "16320": "sold_out",
     "16321": "sold_out",
     "16322": "sold_out",
-    "16323": "limited",
+    "16323": "sold_out",
     "16324": "sold_out",
     "16325": "sold_out"
   },
