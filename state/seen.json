@@ -1,11 +1,11 @@
 {
   "day": {
-    "alerts": 2,
-    "date": "2026-08-06",
+    "alerts": 0,
+    "date": null,
     "ended": false,
     "failures": 0,
-    "polls": 61,
-    "started": true
+    "polls": 0,
+    "started": false
   },
   "failure_streak": 0,
   "notified": {
