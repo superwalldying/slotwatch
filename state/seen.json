@@ -2,9 +2,9 @@
   "day": {
     "alerts": 1,
     "date": "2026-08-07",
-    "ended": false,
+    "ended": true,
     "failures": 0,
-    "polls": 134,
+    "polls": 160,
     "started": true
   },
   "failure_streak": 0,
