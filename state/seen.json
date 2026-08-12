@@ -4,7 +4,7 @@
     "date": "2026-08-12",
     "ended": false,
     "failures": 0,
-    "polls": 9,
+    "polls": 115,
     "started": true
   },
   "failure_streak": 0,
@@ -31,7 +31,7 @@
     "16243": "sold_out",
     "16244": "sold_out",
     "16245": "sold_out",
-    "16256": "limited",
+    "16256": "sold_out",
     "16324": "sold_out",
     "16325": "sold_out",
     "16385": "open",
