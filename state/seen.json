@@ -2,9 +2,9 @@
   "day": {
     "alerts": 1,
     "date": "2026-08-13",
-    "ended": false,
+    "ended": true,
     "failures": 0,
-    "polls": 128,
+    "polls": 135,
     "started": true
   },
   "failure_streak": 0,
@@ -29,7 +29,7 @@
     "16241": "limited",
     "16242": "sold_out",
     "16243": "sold_out",
-    "16244": "limited",
+    "16244": "sold_out",
     "16245": "sold_out",
     "16256": "sold_out",
     "16324": "sold_out",
