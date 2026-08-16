@@ -178,8 +178,8 @@ windows in `rules.yaml` if you'd rather cover that — sessions that have alread
 are suppressed on their own merits, so weekend polling will not start announcing blocks
 that are already over.
 
-Each poll fetches every configured tab, so with the two tabs in `rules.yaml` that is
-**~290 requests/day, roughly 12 MB** — a couple of dozen human page views, since one full
+Each poll fetches every configured tab, so with the three tabs in `rules.yaml` that is
+**~435 requests/day, roughly 18 MB** — a couple of dozen human page views, since one full
 page load pulls ~500 KB of assets. One request per tab every 3 minutes is slower than a
 person casually browsing.
 

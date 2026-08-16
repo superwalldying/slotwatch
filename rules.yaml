@@ -7,7 +7,7 @@
 poll:
   # Tab keys as defined in your site profile's `tabs:` section. Each is one extra
   # request per poll.
-  tabs: [primary, beacon]
+  tabs: [primary, beacon, w50th]
 
   # All window times below are in this zone, evaluated with real DST rules.
   timezone: America/New_York
@@ -81,6 +81,18 @@ rules:
     level: "Intermediate - Court 1"
     time: "4:00 pm - 7:30 pm"
     date: any
+    triggers: [new_slot, reopened]
+
+  # One specific evening: Court 1 on 2026-08-21, which is sold out as of writing. The
+  # date is pinned rather than `any`, so this rule goes quiet by itself once that Friday
+  # has passed - delete it then, or widen `date` if the venue is worth watching ongoing.
+  # `new_slot` is kept as insurance: if the tab is ever re-issued with fresh game ids,
+  # a re-appearing 08/21 Court 1 row still pings rather than arriving silently.
+  - name: "Court 1, 2026-08-21"
+    enabled: true
+    tab: w50th
+    level: "Intermediate - Court 1"
+    date: "2026-08-21"
     triggers: [new_slot, reopened]
 
   # Beacon: new date drops only. No level filter, so an added or renamed level is still
