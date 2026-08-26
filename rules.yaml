@@ -24,7 +24,11 @@ poll:
   # Consecutive fetch failures before you're told the scraper may be down.
   failure_threshold: 3
   # Random 0..N seconds added to each sleep so requests aren't perfectly periodic.
-  jitter_seconds: 20
+  # Additive, so it only ever slows the cadence - at the 1-minute Friday interval a
+  # 0-20s spread cost about 12% of the day's polls, and `expected_polls` does not model
+  # it, so the loss showed up as a lower coverage figure in the closing report. Halved
+  # to 10s on 2026-08-26: still aperiodic, ~93% of target rather than ~88%.
+  jitter_seconds: 10
 
   # Weekdays only. This is a deliberate trade: cancellations must be submitted by 3pm
   # Friday to earn a refund, so nearly all of them land inside Mon-Fri. A spot freed on
@@ -47,7 +51,7 @@ poll:
       dense:
         start: "12:00"
         end: "15:00"
-        interval_minutes: 2
+        interval_minutes: 1
 
 notify:
   # The webhook URL is read from this environment variable, never stored here.

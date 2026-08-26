@@ -308,7 +308,7 @@ def test_shipped_rules_yaml_is_quiet_at_the_weekend():
 
     assert interval_at(shipped, utc(2026, 8, 1, 16)) is None  # Sat 12:00 EDT
     assert interval_at(shipped, utc(2026, 8, 2, 16)) is None  # Sun 12:00 EDT
-    assert interval_at(shipped, utc(2026, 7, 31, 17)) == dt.timedelta(minutes=2)  # Fri 13:00
+    assert interval_at(shipped, utc(2026, 7, 31, 17)) == dt.timedelta(minutes=1)  # Fri 13:00
 
 
 # --------------------------------------------------------------------------
@@ -422,6 +422,6 @@ def test_shipped_half_nine_is_no_longer_watched():
 
 def test_shipped_daily_poll_targets():
     """The denominator in every end-of-day report. 7h at 3 min, and Friday's dense
-    12:00-15:00 stretch buying 30 extra polls."""
+    12:00-15:00 stretch at 1 min buying 120 extra polls."""
     assert expected_polls(shipped(), dt.date(2026, 7, 27)) == 140  # Mon
-    assert expected_polls(shipped(), dt.date(2026, 7, 31)) == 170  # Fri
+    assert expected_polls(shipped(), dt.date(2026, 7, 31)) == 260  # Fri
