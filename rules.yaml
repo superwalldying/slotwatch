@@ -91,17 +91,11 @@ rules:
     date: any
     triggers: [new_slot, reopened]
 
-  # Beacon: new date drops only. No level filter, so an added or renamed level is still
-  # caught, and no `reopened` so cancellations stay quiet.
-  - name: "New Beacon date"
-    enabled: true
-    tab: beacon
-    date: any
-    triggers: [new_slot]
-
   # Beacon Advanced is sold out on every currently listed date, so a cancellation is the
-  # only way in. `reopened` only: new dates are already covered by the rule above, which
-  # sits earlier and would claim the `new_slot` event anyway.
+  # only way in. `reopened` only, deliberately: the "New Beacon date" rule that used to
+  # sit here and announce every fresh date was removed on 2026-08-26, so a Beacon date
+  # entering the rolling window now arrives silently. Add `new_slot` here to hear about
+  # a new Advanced date the moment it drops, without the other levels coming with it.
   # Exact match, so this is the "Advanced" level alone - "Advanced Intermediate" is a
   # separate level and mostly has room already. To watch both, set `match: regex`.
   - name: "Beacon Advanced reopening"
