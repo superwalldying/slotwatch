@@ -7,7 +7,11 @@
 poll:
   # Tab keys as defined in your site profile's `tabs:` section. Each is one extra
   # request per poll.
-  tabs: [primary, beacon, w50th]
+  #
+  # `w50th` was dropped on 2026-08-26: the tab now returns a well-formed table with zero
+  # rows, so that series has ended rather than the parser having broken. Re-add it here
+  # if the Friday W50th sessions are listed again - the profile still defines the tab.
+  tabs: [primary, beacon]
 
   # All window times below are in this zone, evaluated with real DST rules.
   timezone: America/New_York
@@ -83,18 +87,6 @@ rules:
     date: any
     triggers: [new_slot, reopened]
 
-  # One specific evening: Court 1 on 2026-08-21, which is sold out as of writing. The
-  # date is pinned rather than `any`, so this rule goes quiet by itself once that Friday
-  # has passed - delete it then, or widen `date` if the venue is worth watching ongoing.
-  # `new_slot` is kept as insurance: if the tab is ever re-issued with fresh game ids,
-  # a re-appearing 08/21 Court 1 row still pings rather than arriving silently.
-  - name: "Court 1, 2026-08-21"
-    enabled: true
-    tab: w50th
-    level: "Intermediate - Court 1"
-    date: "2026-08-21"
-    triggers: [new_slot, reopened]
-
   # Beacon: new date drops only. No level filter, so an added or renamed level is still
   # caught, and no `reopened` so cancellations stay quiet.
   - name: "New Beacon date"
@@ -102,6 +94,18 @@ rules:
     tab: beacon
     date: any
     triggers: [new_slot]
+
+  # Beacon Advanced is sold out on every currently listed date, so a cancellation is the
+  # only way in. `reopened` only: new dates are already covered by the rule above, which
+  # sits earlier and would claim the `new_slot` event anyway.
+  # Exact match, so this is the "Advanced" level alone - "Advanced Intermediate" is a
+  # separate level and mostly has room already. To watch both, set `match: regex`.
+  - name: "Beacon Advanced reopening"
+    enabled: true
+    tab: beacon
+    level: "Advanced"
+    date: any
+    triggers: [reopened]
 
   # --- Not enabled: wider Sunday coverage -------------------------------------------
   # Court 1 at 4pm is full on every currently listed date, so the rules above may stay
