@@ -93,9 +93,10 @@ rules:
 
   # Beacon Advanced is sold out on every currently listed date, so a cancellation is the
   # only way in. `reopened` only, deliberately: the "New Beacon date" rule that used to
-  # sit here and announce every fresh date was removed on 2026-08-26, so a Beacon date
-  # entering the rolling window now arrives silently. Add `new_slot` here to hear about
-  # a new Advanced date the moment it drops, without the other levels coming with it.
+  # sit here and announce every fresh date was removed on 2026-08-26, when the next drop
+  # was known to be about a month out - the listing already runs to 2026-10-30, so there
+  # is nothing for a `new_slot` rule to catch until then. Add `new_slot` here when that
+  # changes, to hear about a new Advanced date without the other levels coming with it.
   # Exact match, so this is the "Advanced" level alone - "Advanced Intermediate" is a
   # separate level and mostly has room already. To watch both, set `match: regex`.
   - name: "Beacon Advanced reopening"
