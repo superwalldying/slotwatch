@@ -1,10 +1,10 @@
 {
   "day": {
     "alerts": 0,
-    "date": "2026-09-04",
-    "ended": true,
+    "date": "2026-09-07",
+    "ended": false,
     "failures": 0,
-    "polls": 244,
+    "polls": 34,
     "started": true
   },
   "failure_streak": 0,
@@ -94,7 +94,7 @@
     "16597": "sold_out",
     "16598": "sold_out",
     "16599": "sold_out",
-    "16600": "limited",
+    "16600": "sold_out",
     "16601": "sold_out",
     "16602": "sold_out",
     "16603": "sold_out",
