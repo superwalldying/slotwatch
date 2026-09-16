@@ -1,10 +1,10 @@
 {
   "day": {
     "alerts": 0,
-    "date": "2026-09-15",
-    "ended": true,
+    "date": "2026-09-16",
+    "ended": false,
     "failures": 0,
-    "polls": 138,
+    "polls": 27,
     "started": true
   },
   "failure_streak": 0,
@@ -51,7 +51,7 @@
     "16434": "sold_out",
     "16435": "sold_out",
     "16436": "sold_out",
-    "16437": "limited",
+    "16437": "sold_out",
     "16448": "open",
     "16449": "open",
     "16450": "sold_out",
@@ -69,7 +69,7 @@
     "16482": "sold_out",
     "16483": "sold_out",
     "16484": "sold_out",
-    "16485": "open",
+    "16485": "limited",
     "16496": "open",
     "16597": "sold_out",
     "16598": "sold_out",
