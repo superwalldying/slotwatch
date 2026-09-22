@@ -4,7 +4,7 @@
     "date": "2026-09-22",
     "ended": false,
     "failures": 0,
-    "polls": 27,
+    "polls": 135,
     "started": true
   },
   "failure_streak": 0,
@@ -36,12 +36,12 @@
   },
   "seeded": true,
   "slots": {
-    "16417": "open",
+    "16417": "sold_out",
     "16418": "sold_out",
     "16419": "sold_out",
     "16420": "sold_out",
     "16421": "sold_out",
-    "16432": "limited",
+    "16432": "sold_out",
     "16433": "open",
     "16434": "sold_out",
     "16435": "sold_out",
