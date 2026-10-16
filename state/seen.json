@@ -2,9 +2,9 @@
   "day": {
     "alerts": 1,
     "date": "2026-10-16",
-    "ended": false,
+    "ended": true,
     "failures": 0,
-    "polls": 238,
+    "polls": 244,
     "started": true
   },
   "failure_streak": 0,
@@ -24,7 +24,7 @@
   "seeded": true,
   "slots": {
     "16465": "open",
-    "16466": "limited",
+    "16466": "sold_out",
     "16467": "sold_out",
     "16468": "sold_out",
     "16469": "limited",
