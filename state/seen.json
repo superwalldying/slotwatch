@@ -2,7 +2,7 @@
   "day": {
     "alerts": 3,
     "date": "2026-10-23",
-    "ended": false,
+    "ended": true,
     "failures": 0,
     "polls": 244,
     "started": true
