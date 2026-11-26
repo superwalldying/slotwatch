@@ -1,10 +1,10 @@
 {
   "day": {
-    "alerts": 1,
-    "date": "2026-11-25",
-    "ended": true,
+    "alerts": 0,
+    "date": "2026-11-26",
+    "ended": false,
     "failures": 0,
-    "polls": 137,
+    "polls": 87,
     "started": true
   },
   "failure_streak": 0,
@@ -30,7 +30,7 @@
     "16770": "sold_out",
     "16771": "sold_out",
     "16772": "sold_out",
-    "16773": "limited",
+    "16773": "sold_out",
     "16774": "sold_out",
     "16785": "sold_out",
     "16786": "open",
